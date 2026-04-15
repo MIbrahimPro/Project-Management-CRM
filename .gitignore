@@ -1,0 +1,78 @@
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# Production
+dist/
+build/
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.production
+.env.*.local
+!.env.example
+
+# Test credentials — NEVER commit
+test-accounts.json
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# TypeScript
+*.tsbuildinfo
+
+# Claude memory / context (persistent session memory)
+memory/
+"claude context memory/"
+
+# Prisma
+prisma/migrations/
+
+# Build artifacts
+.cache/
+tmp/
+
+# Supabase / storage (local dev)
+.devrolin-files/
+
+# Socket.io / pid files
+*.pid
+*.seed
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Misc
+*.log
+*.tmp
+*.temp
+.temp/

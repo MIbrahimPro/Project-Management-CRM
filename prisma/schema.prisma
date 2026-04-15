@@ -1,0 +1,876 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  PROJECT_MANAGER
+  DEVELOPER
+  DESIGNER
+  HR
+  ACCOUNTANT
+  SALES
+  CLIENT
+}
+
+enum WorkMode {
+  REMOTE
+  ONSITE
+  HYBRID
+}
+
+enum ProjectStatus {
+  PENDING
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+enum MilestoneStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  BLOCKED
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  DONE
+  CANCELLED
+}
+
+enum DocumentAccess {
+  PRIVATE
+  INTERNAL
+  CLIENT_VIEW
+  CLIENT_EDIT
+}
+
+enum NotificationType {
+  CHAT_MESSAGE
+  TASK_ASSIGNED
+  TASK_CHANGED
+  MEETING_SCHEDULED
+  MEETING_REMINDER
+  PROJECT_UPDATE
+  QUESTION_ANSWERED
+  ATTENDANCE_ALERT
+  AWAY_CHECK
+  HIRING_UPDATE
+  GENERAL
+}
+
+enum HiringStatus {
+  DRAFT
+  PENDING_APPROVAL
+  OPEN
+  CLOSED
+  CANCELLED
+}
+
+enum CandidateStatus {
+  APPLIED
+  UNDER_REVIEW
+  AI_RECOMMENDED
+  HR_RECOMMENDED
+  SHORTLISTED
+  INTERVIEW_SCHEDULED
+  HIRED
+  REJECTED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  VERY_LATE
+  ABSENT
+  LEFT_EARLY
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+enum TransactionCategory {
+  SALARY
+  PROJECT_PAYMENT
+  HOSTING
+  DOMAIN
+  SOFTWARE
+  OFFICE
+  MARKETING
+  MISCELLANEOUS
+}
+
+enum WorkspaceType {
+  INSTAGRAM
+  LINKEDIN
+  TWITTER
+  YOUTUBE
+  GENERAL
+  CUSTOM
+}
+
+enum WorkspaceTaskStatus {
+  IDEA
+  IN_PROGRESS
+  IN_REVIEW
+  APPROVED
+  PUBLISHED
+  ARCHIVED
+}
+
+// ============================================================
+// USER & AUTH
+// ============================================================
+
+model User {
+  id                 String    @id @default(cuid())
+  email              String    @unique
+  passwordHash       String?
+  name               String
+  phone              String?
+  profilePicUrl      String?
+  role               UserRole
+  workMode           WorkMode  @default(REMOTE)
+  statedRole         String?
+  isActive           Boolean   @default(true)
+  isGoogleConnected  Boolean   @default(false)
+  googleRefreshToken String?
+  workHoursStart     String?
+  workHoursEnd       String?
+  currencyPreference String    @default("USD")
+  clientColor        String    @default("#06b6d4")
+  pushSubscription   String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  sessions              Session[]
+  notifications         Notification[]
+  notifPreferences      NotificationPreference?
+  sentMessages          Message[]                @relation("SentMessages")
+  projectMembers        ProjectMember[]
+  taskAssignees         TaskAssignee[]
+  documents             Document[]               @relation("DocumentCreator")
+  checkIns              CheckIn[]
+  attendance            Attendance[]
+  requestedHiring       HiringRequest[]          @relation("HiringRequester")
+  assignedHR            HiringRequest[]          @relation("HiringHR")
+  workspaceMembers      WorkspaceMember[]
+  accountEntriesCreated AccountEntry[]           @relation("EntryCreator")
+  questionAnswers       QuestionAnswer[]
+  meetingParticipants   MeetingParticipant[]
+  chatRoomMemberships   ChatRoomMember[]
+  workspaceTaskActivity WorkspaceTask[]          @relation("WorkspaceTaskCreator")
+  tasksCreated          Task[]                   @relation("TaskCreator")
+  clientProjects        Project[]              @relation("ProjectClient")
+  aiConversations       AIConversation[]
+
+  @@index([email])
+  @@index([role])
+  @@index([isActive])
+}
+
+model Session {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  deviceId        String   @unique
+  userAgentFamily String
+  userAgent       String
+  ipAddress       String
+  refreshToken    String   @unique
+  expiresAt       DateTime
+  createdAt       DateTime @default(now())
+  lastUsedAt      DateTime @default(now())
+
+  @@index([userId])
+  @@index([refreshToken])
+}
+
+model RefreshTokenBlacklist {
+  id            String   @id @default(cuid())
+  tokenHash     String   @unique
+  userId        String
+  blacklistedAt DateTime @default(now())
+  graceUntil    DateTime
+  reusedOnce    Boolean  @default(false)
+  expiresAt     DateTime
+
+  @@index([tokenHash])
+  @@index([expiresAt])
+}
+
+model OtpToken {
+  id        String   @id @default(cuid())
+  userId    String
+  otpHash   String
+  purpose   String   @default("password_reset")
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Invitation {
+  id         String    @id @default(cuid())
+  email      String
+  role       UserRole
+  token      String    @unique
+  invitedBy  String
+  projectId  String?
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([token])
+  @@index([email])
+}
+
+// ============================================================
+// PROJECTS
+// ============================================================
+
+model Project {
+  id            String        @id @default(cuid())
+  title         String
+  status        ProjectStatus @default(PENDING)
+  price         Decimal?      @db.Decimal(12, 2)
+  clientId      String?
+  requestedById String?
+  createdById   String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  members        ProjectMember[]
+  milestones     Milestone[]
+  questions      ProjectQuestion[]
+  documents      Document[]
+  chatRooms      ChatRoom[]
+  meetings       Meeting[]
+  clientRequests ClientProjectRequest[]
+  client         User?                  @relation("ProjectClient", fields: [clientId], references: [id])
+  tasks          Task[]
+  accountEntries AccountEntry[]
+  secrets          ProjectSecret[]
+  aiContexts       AIContext[]
+  aiConversations  AIConversation[]
+
+  @@index([status])
+  @@index([clientId])
+  @@index([createdById])
+}
+
+model ProjectSecret {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  key         String
+  value       String   @db.Text
+  description String?  @db.Text
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([projectId, key])
+  @@index([projectId])
+}
+
+model ProjectMember {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  joinedAt  DateTime @default(now())
+
+  @@unique([projectId, userId])
+  @@index([userId])
+}
+
+model Milestone {
+  id          String          @id @default(cuid())
+  projectId   String
+  project     Project         @relation(fields: [projectId], references: [id])
+  order       Int
+  title       String
+  content     String?         @db.Text
+  status      MilestoneStatus @default(NOT_STARTED)
+  completedAt DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  documents Document[]
+  questions ProjectQuestion[]
+
+  @@index([projectId, order])
+}
+
+model ClientProjectRequest {
+  id          String   @id @default(cuid())
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id])
+  clientId    String
+  title       String
+  description String   @db.Text
+  pdfUrl      String?
+  status      String   @default("PENDING")
+  createdAt   DateTime @default(now())
+
+  @@index([clientId])
+  @@index([status])
+}
+
+model ProjectQuestion {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id])
+  milestoneId String?
+  milestone   Milestone? @relation(fields: [milestoneId], references: [id])
+  text        String
+  partOf      String
+  isApproved  Boolean  @default(false)
+  isAiGenerated Boolean  @default(false)
+  createdById String
+  createdAt   DateTime @default(now())
+
+  answers QuestionAnswer[]
+
+  @@index([projectId])
+  @@index([isApproved])
+}
+
+model QuestionAnswer {
+  id         String          @id @default(cuid())
+  questionId String
+  question   ProjectQuestion @relation(fields: [questionId], references: [id])
+  userId     String
+  user       User            @relation(fields: [userId], references: [id])
+  content    String          @db.Text
+  createdAt  DateTime        @default(now())
+
+  @@index([questionId])
+}
+
+// ============================================================
+// DOCUMENTS
+// ============================================================
+
+model Document {
+  id          String         @id @default(cuid())
+  projectId   String?
+  project     Project?       @relation(fields: [projectId], references: [id])
+  milestoneId String?
+  milestone   Milestone?     @relation(fields: [milestoneId], references: [id])
+  workspaceId String?
+  workspace   Workspace?     @relation(fields: [workspaceId], references: [id])
+  taskId      String?
+  task        Task?          @relation(fields: [taskId], references: [id])
+  title       String
+  content     String?        @db.Text
+  access      DocumentAccess @default(INTERNAL)
+  docType     String
+  ownerId     String?
+  createdById String
+  createdBy   User           @relation("DocumentCreator", fields: [createdById], references: [id])
+  parentId    String?
+  parent      Document?      @relation("DocTree", fields: [parentId], references: [id])
+  children    Document[]     @relation("DocTree")
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([projectId])
+  @@index([milestoneId])
+  @@index([ownerId])
+  @@index([workspaceId])
+}
+
+// ============================================================
+// CHAT
+// ============================================================
+
+model ChatRoom {
+  id            String   @id @default(cuid())
+  name          String?
+  type          String
+  projectId     String?
+  project       Project?      @relation(fields: [projectId], references: [id])
+  workspaceId   String?
+  workspace     Workspace?    @relation(fields: [workspaceId], references: [id])
+  taskId        String?
+  task          Task?         @relation(fields: [taskId], references: [id])
+  workspaceTaskId  String?
+  workspaceTask    WorkspaceTask?  @relation(fields: [workspaceTaskId], references: [id])
+  hiringRequestId  String?
+  hiringRequest    HiringRequest?  @relation(fields: [hiringRequestId], references: [id])
+  createdAt        DateTime        @default(now())
+
+  members  ChatRoomMember[]
+  messages Message[]
+
+  @@index([projectId])
+  @@index([type])
+  @@index([hiringRequestId])
+}
+
+model ChatRoomMember {
+  id         String    @id @default(cuid())
+  roomId     String
+  room       ChatRoom  @relation(fields: [roomId], references: [id])
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  lastReadAt DateTime?
+  isPinned   Boolean   @default(false)
+  joinedAt   DateTime  @default(now())
+
+  @@unique([roomId, userId])
+  @@index([userId])
+}
+
+model Message {
+  id              String    @id @default(cuid())
+  roomId          String
+  room            ChatRoom  @relation(fields: [roomId], references: [id])
+  senderId        String
+  sender          User      @relation("SentMessages", fields: [senderId], references: [id])
+  content         String?   @db.Text
+  deletedAt       DateTime?
+  deletedContent  String?   @db.Text
+  mediaUrl        String?
+  mediaType       String?
+  replyToId       String?
+  replyTo         Message?  @relation("Replies", fields: [replyToId], references: [id])
+  replies         Message[] @relation("Replies")
+  forwardedFromId String?
+  isAiResponse    Boolean   @default(false)
+  editedAt        DateTime?
+  createdAt       DateTime  @default(now())
+
+  reactions MessageReaction[]
+
+  @@index([roomId, createdAt])
+  @@index([senderId])
+}
+
+model MessageReaction {
+  id        String   @id @default(cuid())
+  messageId String
+  message   Message  @relation(fields: [messageId], references: [id])
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+}
+
+// ============================================================
+// NOTIFICATIONS
+// ============================================================
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id])
+  type      NotificationType
+  title     String
+  body      String
+  linkUrl   String?
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+}
+
+model NotificationPreference {
+  id                      String  @id @default(cuid())
+  userId                  String  @unique
+  user                    User    @relation(fields: [userId], references: [id])
+  chatInWorkHours         Boolean @default(true)
+  chatOutWorkHours        Boolean @default(false)
+  meetingScheduled        Boolean @default(true)
+  taskAssigned            Boolean @default(true)
+  taskChanged             Boolean @default(true)
+  awayCheck               Boolean @default(true)
+  projectChatInWorkHours  Boolean @default(true)
+  projectChatOutWorkHours Boolean @default(false)
+}
+
+// ============================================================
+// ATTENDANCE & CHECK-IN
+// ============================================================
+
+model CheckIn {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id])
+  checkedInAt    DateTime
+  checkedOutAt   DateTime?
+  isAutoCheckout Boolean   @default(false)
+  date           DateTime  @db.Date
+  createdAt      DateTime  @default(now())
+
+  awayPings AwayPing[]
+
+  @@index([userId, date])
+  @@unique([userId, date])
+}
+
+model AwayPing {
+  id          String    @id @default(cuid())
+  checkInId   String
+  checkIn     CheckIn   @relation(fields: [checkInId], references: [id])
+  sentAt      DateTime  @default(now())
+  respondedAt DateTime?
+  wasAway     Boolean?
+
+  @@index([checkInId])
+}
+
+model Attendance {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id])
+  date      DateTime         @db.Date
+  status    AttendanceStatus
+  note      String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@unique([userId, date])
+  @@index([date])
+  @@index([userId])
+}
+
+// ============================================================
+// MEETINGS
+// ============================================================
+
+model Meeting {
+  id           String    @id @default(cuid())
+  projectId    String?
+  project      Project?  @relation(fields: [projectId], references: [id])
+  chatRoomId   String?
+  title        String
+  jitsiRoomId  String    @unique
+  startedAt    DateTime  @default(now())
+  endedAt      DateTime?
+  recordingUrl String?
+  createdById  String
+  createdAt    DateTime  @default(now())
+
+  participants MeetingParticipant[]
+
+  @@index([projectId])
+}
+
+model MeetingParticipant {
+  id        String    @id @default(cuid())
+  meetingId String
+  meeting   Meeting   @relation(fields: [meetingId], references: [id])
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  joinedAt  DateTime  @default(now())
+  leftAt    DateTime?
+
+  @@unique([meetingId, userId])
+}
+
+// ============================================================
+// HR & HIRING
+// ============================================================
+
+model HiringRequest {
+  id                String       @id @default(cuid())
+  requestedById     String
+  requestedBy       User         @relation("HiringRequester", fields: [requestedById], references: [id])
+  hrId              String?
+  hr                User?        @relation("HiringHR", fields: [hrId], references: [id])
+  role              UserRole
+  statedRole        String
+  description       String?      @db.Text
+  status            HiringStatus @default(DRAFT)
+  managerApproved   Boolean      @default(false)
+  hrApproved        Boolean      @default(false)
+  adminApproved     Boolean      @default(false)
+  publicSlug        String?      @unique
+  publicTitle       String?
+  publicDescription String?      @db.Text
+  deadline          DateTime?
+  linkedinShareUrl  String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  questions  HiringQuestion[]
+  candidates Candidate[]
+  chatRooms  ChatRoom[]
+
+  @@index([status])
+}
+
+model HiringQuestion {
+  id        String        @id @default(cuid())
+  requestId String
+  request   HiringRequest @relation(fields: [requestId], references: [id])
+  text      String
+  required  Boolean       @default(true)
+  order     Int
+
+  answers CandidateAnswer[]
+
+  @@index([requestId])
+}
+
+model Candidate {
+  id              String          @id @default(cuid())
+  requestId       String
+  request         HiringRequest   @relation(fields: [requestId], references: [id])
+  name            String
+  email           String
+  phone           String?
+  cvUrl           String?
+  photoUrl        String?
+  status          CandidateStatus @default(APPLIED)
+  isAiRecommended Boolean         @default(false)
+  isHrRecommended Boolean         @default(false)
+  internalNotes   String?         @db.Text
+  appliedAt       DateTime        @default(now())
+  interviewAt     DateTime?
+
+  answers CandidateAnswer[]
+
+  @@index([requestId, status])
+  @@index([email])
+}
+
+model CandidateAnswer {
+  id          String         @id @default(cuid())
+  candidateId String
+  candidate   Candidate      @relation(fields: [candidateId], references: [id])
+  questionId  String
+  question    HiringQuestion @relation(fields: [questionId], references: [id])
+  answer      String         @db.Text
+
+  @@index([candidateId])
+}
+
+// ============================================================
+// ACCOUNTANT / FINANCE
+// ============================================================
+
+model AccountEntry {
+  id               String              @id @default(cuid())
+  type             TransactionType
+  category         TransactionCategory
+  amountUsd        Decimal             @db.Decimal(12, 2)
+  originalAmount   Decimal?            @db.Decimal(12, 2)
+  originalCurrency String?
+  description      String
+  date             DateTime            @db.Date
+  projectId        String?
+  forUserId        String?
+  receiptUrl       String?
+  createdById      String
+  createdBy        User                @relation("EntryCreator", fields: [createdById], references: [id])
+  project          Project?            @relation(fields: [projectId], references: [id])
+  isVoid           Boolean             @default(false)
+  voidReason       String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  @@index([date])
+  @@index([type, category])
+  @@index([projectId])
+}
+
+model CurrencyRate {
+  id           String   @id @default(cuid())
+  baseCurrency String   @default("USD")
+  rates        String
+  fetchedAt    DateTime @default(now())
+
+  @@index([fetchedAt])
+}
+
+// ============================================================
+// WORKSPACES
+// ============================================================
+
+model Workspace {
+  id          String        @id @default(cuid())
+  name        String
+  type        WorkspaceType
+  description String?
+  createdById String
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  members         WorkspaceMember[]
+  tasks           WorkspaceTask[]
+  chatRooms       ChatRoom[]
+  documents       Document[]
+  aiContexts      AIContext[]
+  aiConversations AIConversation[]
+
+  @@index([createdById])
+}
+
+model WorkspaceMember {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  joinedAt    DateTime  @default(now())
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+}
+
+model WorkspaceTask {
+  id            String              @id @default(cuid())
+  workspaceId   String
+  workspace     Workspace           @relation(fields: [workspaceId], references: [id])
+  title         String
+  description   String?             @db.Text
+  status        WorkspaceTaskStatus @default(IDEA)
+  assigneeIds   String[]
+  attachments   String[]
+  // Optional cover path; must be one of attachments
+  thumbnailPath String?
+  // Optional "went live" date; null until set
+  postedAt      DateTime?
+  dueDate       DateTime?
+  completedAt   DateTime?
+  createdById   String
+  createdBy     User                @relation("WorkspaceTaskCreator", fields: [createdById], references: [id])
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  chatRooms ChatRoom[]
+
+  @@index([workspaceId, status])
+}
+
+// ============================================================
+// TASKS
+// ============================================================
+
+model Task {
+  id          String     @id @default(cuid())
+  title       String
+  description String?    @db.Text
+  status      TaskStatus @default(TODO)
+  projectId   String?
+  workspaceId String?
+  dueDate     DateTime?
+  completedAt DateTime?
+  createdById String
+  createdBy   User       @relation("TaskCreator", fields: [createdById], references: [id])
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  assignees       TaskAssignee[]
+  chatRooms       ChatRoom[]
+  documents       Document[]
+  project         Project?        @relation(fields: [projectId], references: [id])
+  aiContexts      AIContext[]
+  aiConversations AIConversation[]
+
+  @@index([status])
+  @@index([createdById])
+}
+
+model TaskAssignee {
+  id     String @id @default(cuid())
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id])
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@unique([taskId, userId])
+  @@index([userId])
+}
+
+// ============================================================
+// SYSTEM
+// ============================================================
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  metadata  Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+model SystemConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  label     String
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+}
+
+model AIContext {
+  id          String   @id @default(cuid())
+  projectId   String?
+  taskId      String?
+  workspaceId String?
+  content     String   @db.Text
+  updatedAt   DateTime @updatedAt
+
+  project   Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task      Task?      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, taskId, workspaceId])
+  @@index([projectId])
+  @@index([taskId])
+  @@index([workspaceId])
+}
+
+model AIConversation {
+  id          String   @id @default(cuid())
+  userId      String
+  projectId   String?
+  taskId      String?
+  workspaceId String?
+  messages    Json     @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task      Task?      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId, taskId, workspaceId])
+  @@index([userId])
+}

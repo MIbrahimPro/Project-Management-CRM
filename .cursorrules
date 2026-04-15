@@ -1,0 +1,44 @@
+# DevRolin CRM — Cursor Rules
+
+## Identity
+You are building DevRolin, a full-stack CRM. Always read agents.md before starting any task.
+Always update agents.md "Current Build Status" section after completing a task.
+
+## Code Style
+- TypeScript strict mode. No `any`. Use `unknown` with type guards.
+- Always use async/await, never raw .then() chains.
+- Named exports for components. Default exports only for Next.js pages.
+- Filename conventions: PascalCase for components, camelCase for utilities, kebab-case for routes.
+- Always add JSDoc comments to exported functions and complex logic.
+
+## UI Rules
+- ONLY DaisyUI component classes and CSS variables. Never tailwind color utilities (bg-blue-500 etc).
+- Allowed Tailwind: layout (flex, grid, gap, p-, m-, w-, h-, max-w-, min-h-, overflow-, z-, fixed, absolute, relative, rounded-, shadow-, transition-, duration-, opacity-, cursor-)
+- DaisyUI variables to use: bg-base-100, bg-base-200, bg-base-300, text-base-content, text-primary, text-secondary, border-base-300, text-neutral, etc.
+- Every interactive element needs hover, focus, and disabled states via DaisyUI.
+- All pages must be responsive. Mobile-first. Test mentally at 375px width.
+
+## API Rules
+- Every API route wraps its handler with apiHandler() from src/lib/api-handler.ts.
+- Every API route validates request body/query with a Zod schema defined at the top of the file.
+- Every API route that mutates data calls logAction() for audit.
+- Auth routes must apply the rateLimiter middleware.
+- Return format for errors: { error: string, code?: string, details?: ZodError }
+- Return format for success: { data: T } or { success: true } for mutations with no return data.
+
+## Database Rules
+- Use Prisma $transaction() for any operation that touches more than one table.
+- Always use select: {} to limit returned fields — never return passwordHash to client.
+- Add createdAt/updatedAt to all queries that display timestamps.
+- Use cursor-based pagination for large lists (not offset).
+
+## Security Rules
+- Never trust client-provided IDs without verifying ownership in DB.
+- Always read userId from x-user-id header (set by middleware), never from request body.
+- Always read role from x-user-role header, never from request body or token directly.
+- Sanitize all user input before using in DB queries (Prisma parameterizes, but still validate).
+
+## File Management
+- After completing any significant feature, update agents.md with what was built.
+- If you discover a decision that conflicts with agents.md, flag it as a comment and ask the user.
+- Never create files outside the src/ directory except: server.ts, hocuspocus-server.ts, ecosystem.config.js, prisma/schema.prisma.

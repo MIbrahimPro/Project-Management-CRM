@@ -1,0 +1,104 @@
+/* BlockNote / Mantine theme overrides using DaisyUI CSS variables */
+
+/* Background and text colors for the editor container */
+.bn-container[data-color-scheme] {
+  --bn-colors-editor-background: hsl(var(--b1));
+  --bn-colors-editor-text: hsl(var(--bc));
+  --bn-colors-menu-background: hsl(var(--b2));
+  --bn-colors-menu-text: hsl(var(--bc));
+  --bn-colors-tooltip-background: hsl(var(--b3));
+  --bn-colors-tooltip-text: hsl(var(--bc));
+  --bn-colors-hovered-background: hsl(var(--b3));
+  --bn-colors-hovered-text: hsl(var(--bc));
+  --bn-colors-selected-background: hsl(var(--p) / 0.15);
+  --bn-colors-selected-text: hsl(var(--bc));
+  --bn-colors-disabled-background: hsl(var(--b3));
+  --bn-colors-disabled-text: hsl(var(--bc) / 0.4);
+  --bn-colors-shadow: hsl(var(--bc) / 0.1);
+  --bn-colors-border: hsl(var(--bc) / 0.15);
+  --bn-colors-side-menu: hsl(var(--bc) / 0.3);
+  --bn-font-family: inherit;
+}
+
+/* Menu and toolbar styling */
+.bn-container .bn-side-menu,
+.bn-container .bn-formatting-toolbar,
+.bn-container .bn-slash-menu,
+.bn-container .bn-link-toolbar {
+  background: hsl(var(--b2));
+  color: hsl(var(--bc));
+  border: 1px solid hsl(var(--bc) / 0.15);
+  border-radius: 0.75rem;
+  box-shadow: 0 4px 12px hsl(var(--bc) / 0.08);
+}
+
+.bn-container .bn-slash-menu {
+  max-height: 300px;
+}
+
+/* Mantine overrides for menus within the editor */
+.bn-container .mantine-Menu-dropdown {
+  background: hsl(var(--b2));
+  border-color: hsl(var(--bc) / 0.15);
+}
+.bn-container .mantine-Popover-dropdown {
+  background: hsl(var(--b2));
+  border: 1px solid hsl(var(--bc) / 0.15);
+}
+.bn-container .mantine-Menu-item {
+  color: hsl(var(--bc));
+}
+.bn-container .mantine-Menu-item:hover {
+  background: hsl(var(--b3));
+}
+
+/* Horizontal rule block styling */
+.bn-container [data-content-type="horizontalRule"] hr,
+.bn-container hr {
+  border: none;
+  border-top: 1px solid hsl(var(--bc) / 0.2);
+  margin: 1rem 0;
+}
+
+/* Collaboration cursor styling */
+.yjs-cursor {
+  position: relative;
+  border-left: 2px solid;
+  margin-left: -1px;
+  margin-right: -1px;
+  pointer-events: none;
+  word-break: normal;
+}
+
+.yjs-cursor > .yjs-cursor-label {
+  position: absolute;
+  top: -1.4em;
+  left: -1px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 4px 4px 4px 0;
+  white-space: nowrap;
+  color: white;
+  opacity: 0.85;
+  user-select: none;
+}
+
+/* Editor spacing */
+.bn-container .bn-editor {
+  padding: 1.25rem 2.5rem;
+}
+
+@media (max-width: 768px) {
+  .bn-container .bn-editor {
+    padding: 1rem 1rem;
+  }
+}
+
+/* Container wrapper for better visual integration */
+.bn-editor-wrapper {
+  border: 1px solid hsl(var(--bc) / 0.1);
+  border-radius: 0.75rem;
+  overflow: hidden;
+}

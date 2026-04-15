@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(awk '{print $NF}')",
+      "Bash(grep -E \"\\\\.ts$\")",
+      "Bash(sed -n '32,50p' prisma/schema.prisma)",
+      "Bash(sed -n '273,285p' prisma/schema.prisma)",
+      "Bash(ls src/app/api/chat/)",
+      "Bash(ls src/hooks/)",
+      "Bash(ls src/components/chat/)",
+      "Bash(ls src/app/api/projects/\\\\[id\\\\]/documents/)",
+      "Bash(ls src/app/api/documents/)",
+      "Bash(ls *.ts)",
+      "Bash(node -e \"require\\('@hocuspocus/provider'\\); console.log\\('ok'\\)\")",
+      "Bash(node -e \"require\\('@blocknote/react'\\); console.log\\('ok'\\)\")",
+      "Bash(node -e \"const {BlockNoteView} = require\\('@blocknote/mantine'\\); console.log\\(typeof BlockNoteView\\)\")",
+      "Bash(grep -r \"JITSI\\\\|jitsi\" .env*)",
+      "Bash(node -e \"require\\('nanoid'\\)\")",
+      "Bash(npx tsc:*)",
+      "Bash(node -e \"require\\('@hcaptcha/react-hcaptcha'\\)\")",
+      "Bash(npm install:*)",
+      "Bash(sed -n '26,30p' /d/Work/Coding/DevRolin/CRM/prisma/schema.prisma)",
+      "Bash(sed -n '303,320p' /d/Work/Coding/DevRolin/CRM/prisma/schema.prisma)",
+      "Bash(node -e \"require\\('dotenv'\\)\")",
+      "Bash(npm run:*)",
+      "Bash(node:*)",
+      "Bash(xargs grep:*)",
+      "Bash(npx prisma:*)",
+      "Bash(npx eslint:*)"
+    ]
+  }
+}
