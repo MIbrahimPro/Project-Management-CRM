@@ -26,7 +26,10 @@
       "Bash(node:*)",
       "Bash(xargs grep:*)",
       "Bash(npx prisma:*)",
-      "Bash(npx eslint:*)"
+      "Bash(npx eslint:*)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
     ]
   }
 }
