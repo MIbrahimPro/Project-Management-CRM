@@ -6,6 +6,9 @@ export const metadata: Metadata = {
   title: "DevRolin",
   description: "DevRolin Project Management CRM",
   manifest: "/manifest.json",
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

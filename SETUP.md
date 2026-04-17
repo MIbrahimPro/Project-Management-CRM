@@ -82,10 +82,42 @@ Copy the output:
 2. Site key → `NEXT_PUBLIC_HCAPTCHA_SITE_KEY`
 3. Settings → Secret Key → `HCAPTCHA_SECRET_KEY`
 
-### 2.7 Jitsi Meet (Video Meetings — optional)
-- Use a public Jitsi server for testing: `JITSI_DOMAIN=meet.jit.si`
-- For production: self-host Jitsi or use 8x8 Jitsi-as-a-Service
-- `JITSI_APP_ID` and `JITSI_APP_SECRET` are from your Jitsi deployment
+### 2.7 Jitsi Meet (Self-hosted in WSL now, VPS later)
+
+Use a self-hosted Jitsi stack in WSL for local Windows development, then move the same setup to your Linux VPS.
+
+**Local WSL quick start (recommended):**
+```bash
+# Inside WSL (Ubuntu)
+sudo apt update
+sudo apt install -y docker.io docker-compose-plugin git
+sudo usermod -aG docker $USER
+
+# Re-open terminal, then:
+git clone https://github.com/jitsi/docker-jitsi-meet.git ~/docker-jitsi-meet
+cd ~/docker-jitsi-meet
+cp env.example .env
+./gen-passwords.sh
+
+# Local dev over HTTP for easiest setup
+sed -i 's|^PUBLIC_URL=.*|PUBLIC_URL=http://localhost:8000|' .env
+docker compose up -d
+```
+
+After startup, verify from Windows browser:
+- `http://localhost:8000`
+- `http://localhost:8000/external_api.js`
+
+**Later on Linux VPS:**
+- Run the same `docker-jitsi-meet` stack on the VPS
+- Use a real domain (example: `https://meet.yourdomain.com`)
+- Put nginx/caddy in front with TLS
+- Open ports for web + Jitsi media (UDP 10000)
+
+In this CRM app:
+- `JITSI_SERVER_URL` controls where the embed script loads from (supports `http://` or `https://`)
+- `JITSI_DOMAIN` is the host used by the Jitsi API/JWT (`localhost:8000`, `meet.yourdomain.com`, etc.)
+- `JITSI_APP_ID`/`JITSI_APP_SECRET` are only needed when your Jitsi server enforces JWT auth
 
 ---
 
@@ -135,9 +167,17 @@ HCAPTCHA_SECRET_KEY="..."
 NEXT_PUBLIC_HCAPTCHA_SITE_KEY="..."
 
 # ── Jitsi Meet ────────────────────────────────────────────────
-JITSI_DOMAIN="meet.jit.si"
+# Local WSL self-host example:
+JITSI_SERVER_URL="http://localhost:8000"
+JITSI_DOMAIN="localhost:8000"
+
+# For JWT-enabled Jitsi deployments only (leave secret empty if JWT disabled):
 JITSI_APP_ID="your-app-id"
-JITSI_APP_SECRET="your-jitsi-secret"
+JITSI_APP_SECRET=""
+
+# Linux VPS example:
+# JITSI_SERVER_URL="https://meet.yourdomain.com"
+# JITSI_DOMAIN="meet.yourdomain.com"
 
 # ── App ───────────────────────────────────────────────────────
 NEXT_PUBLIC_APP_URL="http://localhost:3000"

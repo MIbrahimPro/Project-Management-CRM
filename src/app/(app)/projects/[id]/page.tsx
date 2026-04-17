@@ -17,7 +17,6 @@ import {
 import toast from "react-hot-toast";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 
-const JitsiMeeting = dynamic(() => import("@/components/meetings/JitsiMeeting"), { ssr: false });
 const StandaloneEditor = dynamic(
   () => import("@/components/documents/StandaloneEditor"),
   { ssr: false }
@@ -26,12 +25,8 @@ const StandaloneEditor = dynamic(
 const TOAST_STYLE = { background: "hsl(var(--b2))", color: "hsl(var(--bc))" };
 const TOAST_ERROR_STYLE = { background: "hsl(var(--b2))", color: "hsl(var(--er))" };
 
-type ActiveMeeting = {
+type StartMeetingResponse = {
   meetingId: string;
-  jitsiRoomId: string;
-  domain: string;
-  token: string | null;
-  isModerator: boolean;
 };
 
 type MilestoneStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED" | "BLOCKED";
@@ -91,7 +86,6 @@ export default function ProjectDashboardPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<{ id: string; name: string; role: string } | null>(null);
-  const [activeMeeting, setActiveMeeting] = useState<ActiveMeeting | null>(null);
   const [startingMeeting, setStartingMeeting] = useState(false);
 
   // Edit team modal
@@ -258,6 +252,12 @@ export default function ProjectDashboardPage() {
 
   async function startMeeting() {
     if (!project || !currentUser) return;
+    const meetingTab = window.open("about:blank", "_blank");
+    if (!meetingTab) {
+      toast.error("Please allow pop-ups to open meetings", { style: TOAST_ERROR_STYLE });
+      return;
+    }
+
     setStartingMeeting(true);
     try {
       const res = await fetch("/api/meetings/start", {
@@ -266,12 +266,15 @@ export default function ProjectDashboardPage() {
         body: JSON.stringify({ title: `${project.title} — Meeting`, projectId: project.id }),
       });
       const data = (await res.json()) as {
-        data?: ActiveMeeting;
+        data?: StartMeetingResponse;
         error?: string;
       };
       if (!res.ok) throw new Error(data.error ?? "Failed to start meeting");
-      setActiveMeeting(data.data!);
+      if (!data.data) throw new Error("Failed to start meeting");
+      meetingTab.location.href = `/meetings/${data.data.meetingId}`;
+      toast.success("Meeting started", { style: TOAST_STYLE });
     } catch (e) {
+      meetingTab.close();
       toast.error(e instanceof Error ? e.message : "Failed", { style: TOAST_ERROR_STYLE });
     } finally {
       setStartingMeeting(false);
@@ -327,16 +330,6 @@ export default function ProjectDashboardPage() {
 
   return (
     <>
-    {activeMeeting && currentUser && (
-      <JitsiMeeting
-        domain={activeMeeting.domain}
-        roomName={activeMeeting.jitsiRoomId}
-        token={activeMeeting.token}
-        displayName={currentUser.name}
-        isModerator={activeMeeting.isModerator}
-        onClose={() => setActiveMeeting(null)}
-      />
-    )}
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">

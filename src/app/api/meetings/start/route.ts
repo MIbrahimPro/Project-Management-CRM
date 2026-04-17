@@ -1,14 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { Server as SocketIOServer } from "socket.io";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { apiHandler, forbidden } from "@/lib/api-handler";
 import { logAction } from "@/lib/audit";
-import { generateJitsiToken, getJitsiDomain } from "@/lib/jitsi";
+import { generateJitsiToken, getJitsiDomain, getJitsiServerUrl } from "@/lib/jitsi";
 import { nanoid } from "nanoid";
 
 export const dynamic = "force-dynamic";
 
 const MANAGER_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"];
+
+const MESSAGE_INCLUDE = {
+  sender: {
+    select: {
+      id: true,
+      name: true,
+      profilePicUrl: true,
+      role: true,
+      clientColor: true,
+    },
+  },
+  replyTo: {
+    select: {
+      id: true,
+      content: true,
+      sender: { select: { name: true } },
+    },
+  },
+  reactions: true,
+} as const;
 
 const bodySchema = z.object({
   title: z.string().min(1).max(200),
@@ -43,6 +64,36 @@ export const POST = apiHandler(async (req: NextRequest) => {
     if (!canAccess) forbidden();
   }
 
+  let chatRoomId: string | null = null;
+  if (body.chatRoomId) {
+    const roomMember = await prisma.chatRoomMember.findUnique({
+      where: { roomId_userId: { roomId: body.chatRoomId, userId } },
+      select: { roomId: true },
+    });
+    if (!roomMember) forbidden();
+    chatRoomId = body.chatRoomId;
+  } else if (body.projectId) {
+    const teamRoom = await prisma.chatRoom.findFirst({
+      where: {
+        projectId: body.projectId,
+        type: "project_team_group",
+        members: { some: { userId } },
+      },
+      select: { id: true },
+    });
+
+    const fallbackRoom = teamRoom ?? (await prisma.chatRoom.findFirst({
+      where: {
+        projectId: body.projectId,
+        type: "project_client_manager",
+        members: { some: { userId } },
+      },
+      select: { id: true },
+    }));
+
+    chatRoomId = fallbackRoom?.id ?? null;
+  }
+
   const jitsiRoomId = `devrolin-${nanoid(12)}`;
 
   const user = await prisma.user.findUnique({
@@ -58,11 +109,8 @@ export const POST = apiHandler(async (req: NextRequest) => {
       title: body.title,
       jitsiRoomId,
       projectId: body.projectId ?? null,
-      chatRoomId: body.chatRoomId ?? null,
+      chatRoomId,
       createdById: userId,
-      participants: {
-        create: { userId },
-      },
     },
     select: { id: true, title: true, jitsiRoomId: true },
   });
@@ -73,9 +121,30 @@ export const POST = apiHandler(async (req: NextRequest) => {
     isModerator,
   });
 
+  if (chatRoomId) {
+    try {
+      const inviteMessage = await prisma.message.create({
+        data: {
+          roomId: chatRoomId,
+          senderId: userId,
+          content: `Video call started: ${body.title}`,
+          mediaUrl: `/meetings/${meeting.id}`,
+          mediaType: "meeting_invite",
+        },
+        include: MESSAGE_INCLUDE,
+      });
+
+      const io = (globalThis as unknown as { io?: SocketIOServer }).io;
+      io?.of("/chat").to(`room:${chatRoomId}`).emit("new_message", inviteMessage);
+    } catch (inviteError) {
+      console.error("[Meeting Start] Failed to post meeting invite message:", inviteError);
+    }
+  }
+
   await logAction(userId, "MEETING_STARTED", "Meeting", meeting.id, {
     title: body.title,
     projectId: body.projectId ?? null,
+    chatRoomId,
   });
 
   return NextResponse.json({
@@ -83,6 +152,7 @@ export const POST = apiHandler(async (req: NextRequest) => {
       meetingId: meeting.id,
       jitsiRoomId: meeting.jitsiRoomId,
       domain: getJitsiDomain(),
+      serverUrl: getJitsiServerUrl(),
       token: token ?? null,
       isModerator,
     },

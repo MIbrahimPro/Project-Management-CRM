@@ -7,11 +7,12 @@ import { tryRefreshSession } from "@/lib/middleware-refresh";
 const PUBLIC_ROUTES = [
   "/login", "/forgot-password", "/otp", "/reset-password",
   "/invite", "/careers", "/install", "/offline",
+  "/join/meeting",
   "/api/auth/login", "/api/auth/google", "/api/auth/refresh",
   "/api/auth/logout",
   "/api/auth/forgot-password", "/api/auth/verify-otp", "/api/auth/reset-password",
   "/api/auth/google/init", "/api/auth/google/callback",
-  "/api/invite/accept", "/api/public",
+  "/api/invite/accept", "/api/public", "/api/meetings/external-api",
 ];
 
 const SUPER_ADMIN_ROUTES = ["/control", "/api/super-admin"];
@@ -58,6 +59,17 @@ function withSetCookies(res: NextResponse, setCookieHeaders: string[]): NextResp
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const requestCookies = parse(req.headers.get("cookie") || "");
+  const hasAuthCookies = Boolean(requestCookies.access_token || requestCookies.refresh_token);
+
+  const isGuestJoinTokenRequest =
+    pathname.startsWith("/api/meetings/") &&
+    pathname.endsWith("/join-token") &&
+    req.nextUrl.searchParams.get("guest") === "1";
+
+  if (isGuestJoinTokenRequest && !hasAuthCookies) {
+    return NextResponse.next();
+  }
 
   // Static assets — skip immediately
   if (

@@ -70,6 +70,7 @@ interface ChatRoomProps {
   onStartMeeting?: () => void;
   showMeetingButton?: boolean;
   showSenderInfo?: boolean;
+  refreshTrigger?: number;
 }
 
 // ── Common emojis (no external package) ─────────────────────────────────────
@@ -134,7 +135,7 @@ function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
 }
 
 // ── Media renderer ────────────────────────────────────────────────────────────
-function MessageMedia({ mediaUrl, mediaType }: { mediaUrl: string; mediaType: string }) {
+function MessageMedia({ mediaUrl, mediaType, isOwn }: { mediaUrl: string; mediaType: string; isOwn: boolean }) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -142,7 +143,14 @@ function MessageMedia({ mediaUrl, mediaType }: { mediaUrl: string; mediaType: st
   useEffect(() => {
     let cancelled = false;
     setLoadError(false);
-    setSignedUrl(null);
+    setSignedUrl(mediaType === "meeting_invite" ? mediaUrl : null);
+
+    if (mediaType === "meeting_invite") {
+      return () => {
+        cancelled = true;
+      };
+    }
+
     fetch(`/api/storage/signed-url?path=${encodeURIComponent(mediaUrl)}`, {
       credentials: "include",
     })
@@ -161,7 +169,7 @@ function MessageMedia({ mediaUrl, mediaType }: { mediaUrl: string; mediaType: st
     return () => {
       cancelled = true;
     };
-  }, [mediaUrl]);
+  }, [mediaType, mediaUrl]);
 
   if (loadError) {
     return (
@@ -171,6 +179,26 @@ function MessageMedia({ mediaUrl, mediaType }: { mediaUrl: string; mediaType: st
     );
   }
   if (!signedUrl) return <span className="loading loading-spinner loading-xs mt-1" />;
+
+  if (mediaType === "meeting_invite") {
+    return (
+      <div className="mt-2">
+        <a
+          href={signedUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`flex w-fit items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
+            isOwn
+              ? "border-base-300 bg-base-100 text-base-content hover:bg-base-200"
+              : "border-primary/60 bg-primary text-primary-content hover:opacity-90"
+          }`}
+        >
+          <Video className="w-3.5 h-3.5" />
+          Join meeting
+        </a>
+      </div>
+    );
+  }
 
   if (mediaType === "image") {
     return (
@@ -214,6 +242,7 @@ export function ChatRoom({
   onStartMeeting,
   showMeetingButton = false,
   showSenderInfo = true,
+  refreshTrigger = 0,
 }: ChatRoomProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -260,7 +289,7 @@ export function ChatRoom({
     setLoading(true);
     setMessages([]);
     void loadMessages();
-  }, [loadMessages]);
+  }, [loadMessages, refreshTrigger]);
 
   // ── Socket events ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -601,6 +630,7 @@ export function ChatRoom({
                           <MessageMedia
                             mediaUrl={msg.mediaUrl}
                             mediaType={msg.mediaType}
+                            isOwn={isOwn}
                           />
                         )}
                       </>

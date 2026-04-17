@@ -1,8 +1,29 @@
 import jwt from "jsonwebtoken";
 
-const RAW_JITSI_DOMAIN = process.env.JITSI_DOMAIN ?? "meet.jit.si";
+const DEFAULT_JITSI_DOMAIN = "meet.jit.si";
+const RAW_JITSI_DOMAIN = process.env.JITSI_DOMAIN ?? "";
+const RAW_JITSI_SERVER_URL = process.env.JITSI_SERVER_URL ?? "";
 const JITSI_APP_ID = process.env.JITSI_APP_ID ?? "devrolin";
 const JITSI_APP_SECRET = process.env.JITSI_APP_SECRET ?? "";
+
+function splitHostAndPort(value: string): string {
+  return value.replace(/^\[/, "").replace(/\]$/, "").split(":")[0] ?? value;
+}
+
+function isValidJitsiHost(host: string): boolean {
+  const normalizedHost = splitHostAndPort(host.trim().toLowerCase());
+  if (!normalizedHost) return false;
+  if (normalizedHost === "localhost") return true;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(normalizedHost)) return true;
+  if (normalizedHost.includes(".")) return true;
+  // Allow IPv6 host format.
+  if (normalizedHost.includes(":")) return true;
+  return false;
+}
+
+function defaultProtocolForHost(host: string): "http" | "https" {
+  return splitHostAndPort(host).toLowerCase() === "localhost" ? "http" : "https";
+}
 
 export interface JitsiUser {
   id: string;
@@ -12,9 +33,49 @@ export interface JitsiUser {
 
 function normalizeDomain(input: string): string {
   const trimmed = input.trim();
-  if (!trimmed) return "meet.jit.si";
-  const withoutProtocol = trimmed.replace(/^https?:\/\//i, "");
-  return withoutProtocol.replace(/\/+$/, "");
+  if (!trimmed) return DEFAULT_JITSI_DOMAIN;
+
+  let candidateHost = "";
+
+  try {
+    const parsed = new URL(trimmed);
+    candidateHost = parsed.host;
+  } catch {
+    // Fall back to host-only input.
+  }
+
+  if (!candidateHost) {
+    const withoutProtocol = trimmed.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+    candidateHost = withoutProtocol.split("/")[0] ?? "";
+  }
+
+  return isValidJitsiHost(candidateHost) ? candidateHost : DEFAULT_JITSI_DOMAIN;
+}
+
+function normalizeServerUrl(input: string, fallbackDomain: string): string {
+  const fallbackProtocol = defaultProtocolForHost(fallbackDomain);
+  const fallbackUrl = `${fallbackProtocol}://${fallbackDomain}`;
+  const trimmed = input.trim();
+  if (!trimmed) return fallbackUrl;
+
+  try {
+    const parsed = new URL(trimmed);
+    if (!isValidJitsiHost(parsed.host)) return fallbackUrl;
+    return `${parsed.origin}${parsed.pathname.replace(/\/+$/, "")}`;
+  } catch {
+    const withoutProtocol = trimmed.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+    const host = withoutProtocol.split("/")[0] ?? "";
+    if (!isValidJitsiHost(host)) return fallbackUrl;
+    const protocol = defaultProtocolForHost(host);
+    return `${protocol}://${withoutProtocol}`;
+  }
+}
+
+function getJitsiConfig() {
+  const domainSource = RAW_JITSI_DOMAIN.trim() || RAW_JITSI_SERVER_URL.trim() || DEFAULT_JITSI_DOMAIN;
+  const domain = normalizeDomain(domainSource);
+  const serverUrl = normalizeServerUrl(RAW_JITSI_SERVER_URL, domain);
+  return { domain, serverUrl };
 }
 
 function shouldUseJwt(domain: string): boolean {
@@ -23,7 +84,7 @@ function shouldUseJwt(domain: string): boolean {
 }
 
 export function generateJitsiToken(roomName: string, user: JitsiUser): string | null {
-  const domain = normalizeDomain(RAW_JITSI_DOMAIN);
+  const { domain } = getJitsiConfig();
   if (!shouldUseJwt(domain)) return null;
 
   const now = Math.floor(Date.now() / 1000);
@@ -52,5 +113,9 @@ export function generateJitsiToken(roomName: string, user: JitsiUser): string | 
 }
 
 export function getJitsiDomain(): string {
-  return normalizeDomain(RAW_JITSI_DOMAIN);
+  return getJitsiConfig().domain;
+}
+
+export function getJitsiServerUrl(): string {
+  return getJitsiConfig().serverUrl;
 }

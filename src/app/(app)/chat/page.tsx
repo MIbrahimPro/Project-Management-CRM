@@ -1,12 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ChevronLeft, Search, Video, X } from "lucide-react";
 import { ChatRoom } from "@/components/chat/ChatRoom";
 import { ResizablePanel } from "@/components/ui/ResizablePanel";
 import { useSocket } from "@/hooks/useSocket";
 import toast from "react-hot-toast";
-import dynamic from "next/dynamic";
 
 const TOAST_STYLE = { background: "hsl(var(--b2))", color: "hsl(var(--bc))" };
 const TOAST_ERROR_STYLE = { background: "hsl(var(--b2))", color: "hsl(var(--er))" };
@@ -43,14 +42,9 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const MANAGER_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"];
-const JitsiMeeting = dynamic(() => import("@/components/meetings/JitsiMeeting"), { ssr: false });
 
-type ActiveMeeting = {
+type StartMeetingResponse = {
   meetingId: string;
-  jitsiRoomId: string;
-  domain: string;
-  token: string | null;
-  isModerator: boolean;
 };
 
 export default function GeneralChatPage() {
@@ -63,7 +57,7 @@ export default function GeneralChatPage() {
   const [mobileShowList, setMobileShowList] = useState(true);
   const [filterQuery, setFilterQuery] = useState("");
   const [startingMeeting, setStartingMeeting] = useState(false);
-  const [activeMeeting, setActiveMeeting] = useState<ActiveMeeting | null>(null);
+  const [chatRefreshTick, setChatRefreshTick] = useState(0);
 
   const { socket, connected } = useSocket("/chat");
 
@@ -146,6 +140,12 @@ export default function GeneralChatPage() {
 
   async function handleStartMeeting() {
     if (!activeRoomId || startingMeeting) return;
+    const meetingTab = window.open("about:blank", "_blank");
+    if (!meetingTab) {
+      toast.error("Please allow pop-ups to open meetings", { style: TOAST_ERROR_STYLE });
+      return;
+    }
+
     setStartingMeeting(true);
     try {
       const res = await fetch("/api/meetings/start", {
@@ -153,11 +153,13 @@ export default function GeneralChatPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: "Chat Meeting", chatRoomId: activeRoomId }),
       });
-      const data = (await res.json()) as { data?: ActiveMeeting; error?: string };
+      const data = (await res.json()) as { data?: StartMeetingResponse; error?: string };
       if (!res.ok || !data.data) throw new Error(data.error ?? "Failed to start meeting");
-      setActiveMeeting(data.data);
-      toast.success("Meeting started", { style: TOAST_STYLE });
+      setChatRefreshTick((v) => v + 1);
+      meetingTab.location.href = `/meetings/${data.data.meetingId}`;
+      toast.success("Meeting started. Join from the chat invite.", { style: TOAST_STYLE });
     } catch {
+      meetingTab.close();
       toast.error("Failed to start meeting", { style: TOAST_ERROR_STYLE });
     } finally {
       setStartingMeeting(false);
@@ -264,16 +266,6 @@ export default function GeneralChatPage() {
 
   return (
     <>
-      {activeMeeting && user && (
-        <JitsiMeeting
-          domain={activeMeeting.domain}
-          roomName={activeMeeting.jitsiRoomId}
-          token={activeMeeting.token}
-          displayName={user.name}
-          isModerator={activeMeeting.isModerator}
-          onClose={() => setActiveMeeting(null)}
-        />
-      )}
       <div className="flex h-[calc(100vh-8rem)] overflow-hidden rounded-xl border border-base-300">
       {/* Room list */}
       <ResizablePanel
@@ -366,6 +358,7 @@ export default function GeneralChatPage() {
             showSenderInfo={activeEntry.isGroup}
             showMeetingButton={isManager}
             onStartMeeting={isManager ? handleStartMeeting : undefined}
+            refreshTrigger={chatRefreshTick}
           />
         </div>
       ) : (

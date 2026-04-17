@@ -3,20 +3,13 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
-import dynamic from "next/dynamic";
 import { ChatRoom } from "@/components/chat/ChatRoom";
 import toast from "react-hot-toast";
 
-const JitsiMeeting = dynamic(() => import("@/components/meetings/JitsiMeeting"), { ssr: false });
-
 const TOAST_ERROR_STYLE = { background: "hsl(var(--b2))", color: "hsl(var(--er))" };
 
-type ActiveMeeting = {
+type StartMeetingResponse = {
   meetingId: string;
-  jitsiRoomId: string;
-  domain: string;
-  token: string | null;
-  isModerator: boolean;
 };
 
 type ChatRoomMember = {
@@ -58,8 +51,8 @@ export default function ProjectChatPage() {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [mobileShowList, setMobileShowList] = useState(true);
-  const [activeMeeting, setActiveMeeting] = useState<ActiveMeeting | null>(null);
   const [startingMeeting, setStartingMeeting] = useState(false);
+  const [chatRefreshTick, setChatRefreshTick] = useState(0);
 
   useEffect(() => {
     Promise.all([
@@ -112,6 +105,12 @@ export default function ProjectChatPage() {
   async function startMeeting(targetRoom?: { id: string; name: string | null }) {
     const roomForMeeting = targetRoom ?? selectedRoom;
     if (!roomForMeeting) return;
+    const meetingTab = window.open("about:blank", "_blank");
+    if (!meetingTab) {
+      toast.error("Please allow pop-ups to open meetings", { style: TOAST_ERROR_STYLE });
+      return;
+    }
+
     setStartingMeeting(true);
     try {
       const res = await fetch("/api/meetings/start", {
@@ -122,10 +121,14 @@ export default function ProjectChatPage() {
           chatRoomId: roomForMeeting.id,
         }),
       });
-      const data = (await res.json()) as { data?: ActiveMeeting; error?: string };
+      const data = (await res.json()) as { data?: StartMeetingResponse; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Failed to start meeting");
-      setActiveMeeting(data.data!);
+      if (!data.data) throw new Error("Failed to start meeting");
+      setChatRefreshTick((v) => v + 1);
+      meetingTab.location.href = `/meetings/${data.data.meetingId}`;
+      toast.success("Meeting started. Join from the chat invite.");
     } catch (e) {
+      meetingTab.close();
       toast.error(e instanceof Error ? e.message : "Failed", { style: TOAST_ERROR_STYLE });
     } finally {
       setStartingMeeting(false);
@@ -174,6 +177,7 @@ export default function ProjectChatPage() {
           showSenderInfo
           showMeetingButton
           onStartMeeting={() => void startMeeting({ id: teamRoom.id, name: teamRoom.name })}
+          refreshTrigger={chatRefreshTick}
         />
       </div>
     );
@@ -199,16 +203,6 @@ export default function ProjectChatPage() {
 
   return (
     <>
-    {activeMeeting && (
-      <JitsiMeeting
-        domain={activeMeeting.domain}
-        roomName={activeMeeting.jitsiRoomId}
-        token={activeMeeting.token}
-        displayName={user.name}
-        isModerator={activeMeeting.isModerator}
-        onClose={() => setActiveMeeting(null)}
-      />
-    )}
     <div className="flex h-[calc(100vh-8rem)] overflow-hidden rounded-xl border border-base-300">
       {/* ── Room list ── */}
       <div
@@ -288,6 +282,7 @@ export default function ProjectChatPage() {
             showSenderInfo={selectedRoom.type?.includes("group") ?? true}
             showMeetingButton={!isClient}
             onStartMeeting={!isClient ? () => void startMeeting() : undefined}
+            refreshTrigger={chatRefreshTick}
           />
         </div>
       ) : (
