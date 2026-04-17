@@ -69,6 +69,9 @@ export const GET = apiHandler(
           createdAt: true,
           updatedAt: true,
           milestone: { select: { id: true, order: true, title: true } },
+          isShared: true,
+          shareToken: true,
+          initialContent: true,
         },
       });
     } else if (isClient) {
@@ -90,6 +93,9 @@ export const GET = apiHandler(
           createdAt: true,
           updatedAt: true,
           milestone: { select: { id: true, order: true, title: true } },
+          isShared: true,
+          shareToken: true,
+          initialContent: true,
         },
       });
     } else {
@@ -115,6 +121,9 @@ export const GET = apiHandler(
           createdAt: true,
           updatedAt: true,
           milestone: { select: { id: true, order: true, title: true } },
+          isShared: true,
+          shareToken: true,
+          initialContent: true,
         },
       });
     }

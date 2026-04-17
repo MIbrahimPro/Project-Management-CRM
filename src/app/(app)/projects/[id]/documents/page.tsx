@@ -146,6 +146,29 @@ export default function DocumentsPage() {
       toast.error("Failed to update access", { style: TOAST_ERROR_STYLE });
     }
   }
+  
+  // ── Public sharing ──────────────────────────────────────────────────────────
+  async function togglePublicSharing(action: "enable" | "disable" | "regenerate") {
+    if (!selectedDoc || !isManager) return;
+    try {
+      const res = await fetch(
+        `/api/projects/${projectId}/documents/${selectedDoc.id}/share`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        }
+      );
+      if (!res.ok) throw new Error();
+      const { data } = await res.json();
+      const updated = { ...selectedDoc, isShared: data.isShared, shareToken: data.shareToken };
+      setDocs((prev) => prev.map((d) => (d.id === selectedDoc.id ? updated : d)));
+      setSelectedDoc(updated);
+      toast.success(action === "disable" ? "Public link disabled" : "Public link active", { style: TOAST_STYLE });
+    } catch {
+      toast.error("Failed to update sharing", { style: TOAST_ERROR_STYLE });
+    }
+  }
 
   // ── Delete doc ─────────────────────────────────────────────────────────────
   async function deleteDoc() {
@@ -351,6 +374,43 @@ export default function DocumentsPage() {
                           </button>
                         </li>
                       ))}
+                      {/* Public sharing section */}
+                      <li className="menu-title mt-2 border-t border-base-300 pt-2">Public Link</li>
+                      <li>
+                        <div className="flex flex-col gap-2 p-2">
+                          <label className="label cursor-pointer p-0 gap-2">
+                            <span className="text-xs">Enabled</span>
+                            <input
+                              type="checkbox"
+                              className="toggle toggle-primary toggle-xs"
+                              checked={!!selectedDoc.isShared}
+                              onChange={(e) => void togglePublicSharing(e.target.checked ? "enable" : "disable")}
+                            />
+                          </label>
+                          
+                          {selectedDoc.isShared && selectedDoc.shareToken && (
+                            <div className="flex flex-col gap-1 w-full mt-1">
+                              <div className="flex items-center gap-1 w-full">
+                                <input
+                                  type="text"
+                                  readOnly
+                                  className="input input-xs bg-base-300 flex-1 truncate text-[10px]"
+                                  value={`${window.location.origin}/docs/${selectedDoc.shareToken}`}
+                                />
+                                <button
+                                  className="btn btn-ghost btn-xs btn-square"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(`${window.location.origin}/docs/${selectedDoc.shareToken}`);
+                                    toast.success("Link copied", { style: TOAST_STYLE });
+                                  }}
+                                >
+                                  <ClipboardCopy className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </li>
                     </ul>
                   </div>
                 )}
@@ -390,6 +450,7 @@ export default function DocumentsPage() {
                   collabToken={collabToken}
                   currentUser={{ id: user?.id ?? "", name: user?.name ?? "User" }}
                   readOnly={!canEdit}
+                  initialContent={selectedDoc.initialContent}
                 />
               ) : (
                 <div className="flex items-center justify-center h-full">

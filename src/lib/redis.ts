@@ -44,19 +44,36 @@ export { redis };
 
 // ---- Session Management ----
 export async function setSession(deviceId: string, data: Record<string, string>, ttlSeconds: number) {
-  await redis.setex(`session:${deviceId}`, ttlSeconds, JSON.stringify(data));
+  try {
+    await redis.setex(`session:${deviceId}`, ttlSeconds, JSON.stringify(data));
+  } catch (err) {
+    console.error("[Redis Session] setSession failed:", err);
+  }
 }
 export async function getSession(deviceId: string) {
-  const raw = await redis.get(`session:${deviceId}`);
-  return raw ? JSON.parse(raw) : null;
+  try {
+    const raw = await redis.get(`session:${deviceId}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch (err) {
+    console.error("[Redis Session] getSession failed:", err);
+    return null;
+  }
 }
 export async function deleteSession(deviceId: string) {
-  await redis.del(`session:${deviceId}`);
+  try {
+    await redis.del(`session:${deviceId}`);
+  } catch (err) {
+    console.error("[Redis Session] deleteSession failed:", err);
+  }
 }
 export async function deleteAllUserSessions(userId: string, deviceIds: string[]) {
-  const pipeline = redis.pipeline();
-  for (const id of deviceIds) pipeline.del(`session:${id}`);
-  await pipeline.exec();
+  try {
+    const pipeline = redis.pipeline();
+    for (const id of deviceIds) pipeline.del(`session:${id}`);
+    await pipeline.exec();
+  } catch (err) {
+    console.error("[Redis Session] deleteAllUserSessions failed:", err);
+  }
 }
 
 // ---- Token Blacklist ----
@@ -194,17 +211,35 @@ export async function checkRateLimit(key: string, maxRequests: number, windowSec
 
 // ---- OTP Attempt Tracking ----
 export async function incrementOtpAttempts(userId: string): Promise<number> {
-  const key = `otp_attempts:${userId}`;
-  const count = await redis.incr(key);
-  if (count === 1) await redis.expire(key, 900);
-  return count;
+  try {
+    const key = `otp_attempts:${userId}`;
+    const count = await redis.incr(key);
+    if (count === 1) await redis.expire(key, 900);
+    return count;
+  } catch (err) {
+    console.error("[Redis OTP] incrementOtpAttempts failed:", err);
+    return 0; // Fail open
+  }
 }
 export async function blockOtpUser(userId: string, blockMinutes: number) {
-  await redis.setex(`otp_blocked:${userId}`, blockMinutes * 60, "1");
+  try {
+    await redis.setex(`otp_blocked:${userId}`, blockMinutes * 60, "1");
+  } catch (err) {
+    console.error("[Redis OTP] blockOtpUser failed:", err);
+  }
 }
 export async function isOtpBlocked(userId: string): Promise<boolean> {
-  return !!(await redis.get(`otp_blocked:${userId}`));
+  try {
+    return !!(await redis.get(`otp_blocked:${userId}`));
+  } catch (err) {
+    console.error("[Redis OTP] isOtpBlocked failed:", err);
+    return false; // Fail open
+  }
 }
 export async function clearOtpAttempts(userId: string) {
-  await redis.del(`otp_attempts:${userId}`);
+  try {
+    await redis.del(`otp_attempts:${userId}`);
+  } catch (err) {
+    console.error("[Redis OTP] clearOtpAttempts failed:", err);
+  }
 }

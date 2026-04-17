@@ -41,6 +41,8 @@ export const GET = apiHandler(async (req: NextRequest) => {
         }
       }
     },
+  });
+
   const { getSignedUrl } = await import("@/lib/supabase-storage");
 
   // Parallel pre-generate signed URLs for avatars

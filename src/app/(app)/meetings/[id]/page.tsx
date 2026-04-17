@@ -8,11 +8,13 @@ const JitsiMeeting = dynamic(() => import("@/components/meetings/JitsiMeeting"),
 
 type MeetingJoinData = {
   meetingId: string;
+  title: string;
   jitsiRoomId: string;
   domain: string;
   serverUrl?: string;
   token: string | null;
   displayName?: string | null;
+  email?: string | null;
   isGuest?: boolean;
   isModerator: boolean;
   canInviteUsers: boolean;
@@ -101,8 +103,10 @@ export default function MeetingJoinPage() {
       domain={meeting.domain}
       serverUrl={meeting.serverUrl}
       roomName={meeting.jitsiRoomId}
+      title={meeting.title}
       token={meeting.token}
       displayName={meeting.displayName}
+      email={meeting.email}
       isGuest={meeting.isGuest}
       isModerator={meeting.isModerator}
       canInviteUsers={meeting.canInviteUsers}

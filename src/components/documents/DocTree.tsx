@@ -13,6 +13,9 @@ export type DocItem = {
   ownerId: string | null;
   createdById: string;
   milestone: { id: string; order: number; title: string } | null;
+  isShared?: boolean;
+  shareToken?: string | null;
+  initialContent?: string | null;
 };
 
 type Milestone = { id: string; order: number; title: string };

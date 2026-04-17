@@ -29,7 +29,7 @@ export const POST = apiHandler(async (req: NextRequest) => {
     [
       {
         role: "user",
-        content: `Generate 5–8 clarifying questions to ask a client before starting this project.\n\nProject: ${title}\nDescription: ${description}${milestoneList ? `\nMilestones: ${milestoneList}` : ""}\n\nReturn a JSON array of objects with "text" (the question) and "partOf" (which aspect of the project it relates to, e.g. "Design", "Scope", "Technical", "Timeline").`,
+        content: `Generate 3–5 high-signal, high-value clarifying questions to ask a client before starting this project. Focus on critical missing details, dependencies, and business goals. Avoid generic questions.\n\nProject: ${title}\nDescription: ${description}${milestoneList ? `\nMilestones: ${milestoneList}` : ""}\n\nReturn a JSON array of objects with "text" (the question) and "partOf" (which aspect of the project it relates to, e.g. "Discovery", "Scope", "Technical", "Timeline").`,
       },
     ],
     {

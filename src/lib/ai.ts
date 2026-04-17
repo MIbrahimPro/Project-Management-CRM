@@ -8,9 +8,12 @@ export type AITaskType =
   | "document"
   | "hr";
 
-interface Message {
-  role: "system" | "user" | "assistant";
-  content: string;
+export interface Message {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | null;
+  tool_calls?: any[];
+  tool_call_id?: string;
+  name?: string;
 }
 
 interface AIOptions {
@@ -20,6 +23,8 @@ interface AIOptions {
   taskType?: AITaskType;
   jsonExample?: string;
   model?: string;
+  tools?: any[];
+  toolChoice?: string;
 }
 
 function stripReasoningAndFences(raw: string): string {
@@ -97,11 +102,12 @@ function extractAssistantContent(data: unknown): string | null {
 
 /**
  * Calls Groq chat completions with task-aware model selection.
+ * Returns the full message object to support tool calls.
  */
-export async function callAI(
+export async function callAIRaw(
   messages: Message[],
   options: AIOptions = {}
-): Promise<string> {
+): Promise<Message | null> {
   const model = getModel(options.taskType, options.model);
   const allMessages: Message[] = [];
   if (options.systemPrompt) {
@@ -113,7 +119,7 @@ export async function callAI(
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) {
       console.error("[AI Error] Missing GROQ_API_KEY");
-      return "AI is temporarily unavailable. Please try again.";
+      return null;
     }
 
     const response = await fetch(GROQ_BASE, {
@@ -127,21 +133,36 @@ export async function callAI(
         messages: allMessages,
         ...(options.maxTokens ? { max_tokens: options.maxTokens } : {}),
         temperature: options.temperature ?? 0.7,
+        ...(options.tools ? { tools: options.tools.map(t => ({ type: "function", function: t })), tool_choice: options.toolChoice ?? "auto" } : {}),
       }),
     });
 
     if (!response.ok) {
       const err = await response.text();
       console.error("[AI Error]", response.status, err);
-      return "AI is temporarily unavailable. Please try again.";
+      return null;
     }
 
-    const data = (await response.json()) as unknown;
-    return extractAssistantContent(data) || "No response generated.";
+    const data = (await response.json()) as any;
+    if (data.choices?.[0]?.message) {
+      return data.choices[0].message as Message;
+    }
+    return null;
   } catch (error) {
     console.error("[AI Error]", error);
-    return "AI is temporarily unavailable. Please try again.";
+    return null;
   }
+}
+
+/**
+ * Convenience wrapper for callAIRaw that returns only content.
+ */
+export async function callAI(
+  messages: Message[],
+  options: AIOptions = {}
+): Promise<string> {
+  const res = await callAIRaw(messages, options);
+  return res?.content || "AI is temporarily unavailable. Please try again.";
 }
 
 /**

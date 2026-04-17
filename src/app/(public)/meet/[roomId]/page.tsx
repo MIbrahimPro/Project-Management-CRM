@@ -34,6 +34,7 @@ export default function PublicInterviewMeetingPage() {
       meetingId={roomId}
       domain={domain}
       roomName={roomId}
+      title="Interview"
       token={null} // Public room for interview
       displayName={requestedName || "Interview Guest"}
       isGuest={true}

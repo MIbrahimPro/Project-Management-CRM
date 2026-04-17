@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { ArrowLeft, Clock, MessageSquare, Save, User } from "lucide-react";
+import { ArrowLeft, Clock, MessageSquare, Save, User, Video, PlayCircle, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { ChatRoom } from "@/components/chat/ChatRoom";
+import MeetingRecordingList from "@/components/meetings/MeetingRecordingList";
 import type { StandaloneEditorHandle } from "@/components/documents/StandaloneEditor";
 import type { TaskStatus } from "@/components/tasks/TaskKanban";
 

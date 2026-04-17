@@ -29,11 +29,13 @@ export const GET = apiHandler(async (req: NextRequest, ctx) => {
     where: { id: meetingId },
     select: {
       id: true,
+      title: true,
       jitsiRoomId: true,
       endedAt: true,
       projectId: true,
       workspaceId: true,
       taskId: true,
+      createdById: true,
       project: {
         select: {
           clientId: true,
@@ -105,11 +107,12 @@ export const GET = apiHandler(async (req: NextRequest, ctx) => {
 
   const user = await prisma.user.findUnique({
     where: { id: authenticatedUserId },
-    select: { id: true, name: true },
+    select: { id: true, name: true, email: true },
   });
   if (!user) forbidden();
 
-  const isModerator = MANAGER_ROLES.includes(userRole);
+  const isCreator = meeting.task?.createdById === authenticatedUserId || meeting.interview?.interviewers.some(u => u.id === authenticatedUserId) || meeting.createdById === authenticatedUserId;
+  const isModerator = MANAGER_ROLES.includes(userRole) || isCreator;
 
   const token = generateJitsiToken(meeting.jitsiRoomId, {
     id: authenticatedUserId,
@@ -120,6 +123,7 @@ export const GET = apiHandler(async (req: NextRequest, ctx) => {
   return NextResponse.json({
     data: {
       meetingId,
+      title: meeting.title,
       jitsiRoomId: meeting.jitsiRoomId,
       domain: getJitsiDomain(),
       serverUrl: getJitsiServerUrl(),
@@ -129,6 +133,7 @@ export const GET = apiHandler(async (req: NextRequest, ctx) => {
       canInviteClients: CLIENT_INVITER_ROLES_ALLOWED.includes(userRole),
       isGuest: false,
       displayName: null,
+      email: user.email,
     },
   });
 });

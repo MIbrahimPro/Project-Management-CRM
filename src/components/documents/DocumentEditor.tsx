@@ -7,9 +7,12 @@ import {
   SuggestionMenuController,
   getDefaultReactSlashMenuItems,
   type DefaultReactSuggestionItem,
+  FormattingToolbar,
+  FormattingToolbarController,
 } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import { filterSuggestionItems } from "@blocknote/core";
+import { Sparkles } from "lucide-react";
 import "@blocknote/mantine/style.css";
 import "@/styles/blocknote-overrides.css";
 import { useTheme } from "@/components/providers/ThemeProvider";
@@ -32,6 +35,7 @@ interface DocumentEditorProps {
   collabToken: string;
   currentUser: { id: string; name: string };
   readOnly?: boolean;
+  initialContent?: string | null;
 }
 
 export default function DocumentEditor({
@@ -40,6 +44,7 @@ export default function DocumentEditor({
   collabToken,
   currentUser,
   readOnly = false,
+  initialContent,
 }: DocumentEditorProps) {
   const [synced, setSynced] = useState(false);
   const [selectedText, setSelectedText] = useState("");
@@ -172,6 +177,27 @@ export default function DocumentEditor({
   }, [editor]);
 
   useEffect(() => {
+    if (synced && editor && initialContent && !readOnly) {
+      // Small delay to ensure Yjs sync is fully settled
+      const timer = setTimeout(async () => {
+        const isDocEmpty = editor.topLevelBlocks.length === 0 || 
+                          (editor.topLevelBlocks.length === 1 && 
+                           (!editor.topLevelBlocks[0].content || (Array.isArray(editor.topLevelBlocks[0].content) && editor.topLevelBlocks[0].content.length === 0)));
+        
+        if (isDocEmpty) {
+          try {
+            const blocks = await editor.tryParseMarkdownToBlocks(initialContent);
+            editor.replaceBlocks(editor.topLevelBlocks, blocks);
+          } catch (err) {
+            console.error("[BlockNote] Failed to initialize with markdown:", err);
+          }
+        }
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [synced, editor, initialContent, readOnly]);
+
+  useEffect(() => {
     function handleCopy(event: ClipboardEvent) {
       const selection = window.getSelection();
       const copied = selection?.toString() ?? "";
@@ -219,28 +245,37 @@ export default function DocumentEditor({
         theme={bnTheme}
         className="h-full"
         slashMenu={false}
+        formattingToolbar={false}
       >
         <SuggestionMenuController triggerCharacter="/" getItems={slashItems} />
+        <FormattingToolbarController
+          formattingToolbar={(props) => (
+            <FormattingToolbar {...props}>
+              <div className="flex items-center gap-1 border-l border-base-300 ml-1 pl-1">
+                <button
+                  className="bn-button hover:bg-base-300 transition-colors"
+                  onClick={() => void runSelectionAiAction("summarize")}
+                  title="AI Summarize"
+                  disabled={selectionBusy !== null}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-primary" />
+                  <span className="text-[10px] ml-1">Summarize</span>
+                </button>
+                <button
+                  className="bn-button hover:bg-base-300 transition-colors"
+                  onClick={() => void runSelectionAiAction("professionalize")}
+                  title="AI Professionalize"
+                  disabled={selectionBusy !== null}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-secondary" />
+                  <span className="text-[10px] ml-1">Fix</span>
+                </button>
+              </div>
+            </FormattingToolbar>
+          )}
+        />
       </BlockNoteView>
 
-      {!readOnly && selectedText && (
-        <div className="absolute right-4 bottom-4 z-40 flex items-center gap-2 bg-base-200 border border-base-300 rounded-xl p-2 shadow-lg">
-          <button
-            className="btn btn-xs btn-outline"
-            onClick={() => void runSelectionAiAction("summarize")}
-            disabled={selectionBusy !== null}
-          >
-            {selectionBusy === "summarize" ? "..." : "Summarize"}
-          </button>
-          <button
-            className="btn btn-xs btn-outline"
-            onClick={() => void runSelectionAiAction("professionalize")}
-            disabled={selectionBusy !== null}
-          >
-            {selectionBusy === "professionalize" ? "..." : "Professionalize"}
-          </button>
-        </div>
-      )}
 
       <dialog className={`modal ${aiPromptOpen ? "modal-open" : ""}`}>
         <div className="modal-box bg-base-200 max-w-lg">

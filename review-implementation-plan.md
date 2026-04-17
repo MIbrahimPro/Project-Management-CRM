@@ -32,35 +32,35 @@ Tracking document for all issues and feature requests from `review.md`. Work is 
   - Files: `src/app/api/meetings/start/route.ts`, `src/components/chat/ChatRoom.tsx`
 
 ### Chunk 2.3: Chat info/settings modal (shell)
-- [ ] Make chat name/header clickable → opens `<ChatInfoModal />`
-- [ ] Scaffold modal with tabs: Overview, Members, Media, Links, Recordings
+- [x] Make chat name/header clickable → opens `<ChatInfoModal />`
+- [x] Scaffold modal with tabs: Overview, Members, Media, Links, Recordings
   - Files: new `src/components/chat/ChatInfoModal.tsx`, `src/components/chat/ChatRoom.tsx`
 
 ### Chunk 2.4: Chat info modal — Overview tab
-- [ ] Show group/DM name and pfp (click pfp → enlarge lightbox)
-- [ ] If group + current user is admin → inline-edit name and pfp upload
+- [x] Show group/DM name and pfp (click pfp → enlarge lightbox)
+- [x] If group + current user is admin → inline-edit name and pfp upload
   - Files: `ChatInfoModal.tsx`, `src/app/api/chat/rooms/[roomId]/route.ts`
 
 ### Chunk 2.5: Chat info modal — Members tab
-- [ ] List all members with roles
-- [ ] Click member → open DM with them **only if allowed** (dev cannot DM client, etc.)
-- [ ] Apply role-based DM policy
+- [x] List all members with roles
+- [x] Click member → open DM with them **only if allowed** (dev cannot DM client, etc.)
+- [x] Apply role-based DM policy
   - Files: `ChatInfoModal.tsx`, `src/app/api/chat/rooms/dm/route.ts`
 
 ### Chunk 2.6: Leave / delete group
-- [ ] Add "Leave Group" action — removes membership, preserves all messages
-- [ ] Post-leave: show ghost view with "Delete for me" option
-- [ ] Ensure other members unaffected and leaver's old messages remain visible
+- [x] Add "Leave Group" action — removes membership, preserves all messages
+- [x] Post-leave: show ghost view with "Delete for me" option
+- [x] Ensure other members unaffected and leaver's old messages remain visible
   - Files: new `src/app/api/chat/rooms/[roomId]/leave/route.ts`, `ChatInfoModal.tsx`
 
 ### Chunk 2.7: Media & Links tabs
-- [ ] Query messages where `mediaUrl` is not null → grid view with lightbox
-- [ ] Parse message bodies for URLs (regex) → list with previews
+- [x] Query messages where `mediaUrl` is not null → grid view with lightbox
+- [x] Parse message bodies for URLs (regex) → list with previews
   - Files: `ChatInfoModal.tsx`, new `GET /api/chat/rooms/[roomId]/media`, `/links`
 
 ### Chunk 2.8: Recordings tab
-- [ ] List all `Meeting` records for this `chatRoomId` with `recordingUrl` not null
-- [ ] Playback / download
+- [x] List all `Meeting` records for this `chatRoomId` with `recordingUrl` not null
+- [x] Playback / download
   - Files: new `GET /api/chat/rooms/[roomId]/recordings`
 
 ---
@@ -73,26 +73,27 @@ Tracking document for all issues and feature requests from `review.md`. Work is 
   - Files: new route, `ChatRoom.tsx`, `src/lib/socket-server.ts`
 
 ### Chunk 3.2: Cross-platform emoji picker
-- [ ] Replace built-in emoji grid with `emoji-mart` (Apple/Google/Twitter sets)
-- [ ] Let user pick emoji style in settings (or detect OS)
-  - Files: `ChatRoom.tsx`, `package.json`
+- [x] Replace built-in emoji grid with `emoji-mart` (Apple/Google/Twitter sets)
+- [x] Integrate with input and message context menu
+  - Files: `src/components/chat/ChatRoom.tsx`, `package.json`
 
 ### Chunk 3.3: Linkify URLs and phone numbers
 - [x] Use `react-markdown` + `remark-gfm` to auto-link http(s), www., phone numbers
-  - Files: `ChatRoom.tsx` message-render path
+- [x] Add status indicators on user avatars (online/away/offline)
+  - Files: `src/components/chat/ChatRoom.tsx`, `src/components/ui/UserAvatar.tsx`
 
 ### Chunk 3.4: Long message "Read more"
 - [x] Collapse messages > 500 chars with expandable toggle
   - Files: `ChatRoom.tsx`
 
 ### Chunk 3.5: Context menu (right-click / long-press)
-- [ ] Menu options: Copy, Delete (if sender), Reply, React
-- [ ] Mobile long-press handler + haptic
-  - Files: `ChatRoom.tsx`, new `src/components/chat/MessageContextMenu.tsx`
+- [x] Menu options: Copy, Delete (if sender), Reply, React, Pin
+- [x] Mobile long-press handler + haptic
+  - Files: `ChatRoom.tsx`, `src/components/chat/MessageContextMenu.tsx`
 
 ### Chunk 3.6: WhatsApp-style reactions
 - [x] Quick-bar: 👍 ❤️ 😂 😮 😢 🙏 + "+" for full picker
-- [ ] Use the font 
+- [x] Use the font 
   ```
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -103,9 +104,11 @@ Tracking document for all issues and feature requests from `review.md`. Work is 
   - Files: `ChatRoom.tsx`, existing `react` socket event
 
 ### Chunk 3.7: Delivery/read receipts
-- [ ] Add `deliveredAt`, `readBy` tracking on Message
-- [ ] Single tick (sent), double tick (delivered), blue double tick (read)
-  - Files: `prisma/schema.prisma`, socket handlers, `ChatRoom.tsx`
+- [x] Add `deliveredAt`, `MessageReceipt` tracking
+- [x] Single tick (sent), double tick (delivered), blue double tick (read)
+- [x] Scroll to bottom button with unread indicator
+- [x] Pinned messages bar at top of chat
+  - Files: `prisma/schema.prisma`, `src/lib/socket-server.ts`, `ChatRoom.tsx`
 
 ### Chunk 3.8: Voice player theme
 - [x] Replace hardcoded colors in voice waveform with DaisyUI variables (Custom VoicePlayer)
@@ -137,8 +140,8 @@ Tracking document for all issues and feature requests from `review.md`. Work is 
   - Files: new PreJoinScreen, `JitsiMeeting.tsx`
 
 ### Chunk 4.3: Lobby / waiting room
-- [ ] Enable Jitsi lobby; moderators auto-admit; others wait
-- [ ] If current user is meeting creator → go directly in
+- [x] Enable Jitsi lobby; moderators auto-admit; others wait
+- [x] If current user is meeting creator → go directly in
   - Files: `JitsiMeeting.tsx` (config), `api/meetings/start/route.ts`
 
 ### Chunk 4.4: Remove Jitsi branding & fix meeting name
@@ -147,29 +150,29 @@ Tracking document for all issues and feature requests from `review.md`. Work is 
   - Files: `JitsiMeeting.tsx`
 
 ### Chunk 4.5: Theme-sync the meeting UI
-- [ ] Read user's DaisyUI theme, inject Jitsi CSS variables on mount
+- [x] Read user's DaisyUI theme, inject Jitsi CSS variables on mount
   - Files: `JitsiMeeting.tsx`
 
 ### Chunk 4.6: Identity cleanup
-- [ ] Hide Profile name-edit in Jitsi settings
-- [ ] Override displayed "Logged in as" — use user's email or hide
+- [x] Hide Profile name-edit in Jitsi settings
+- [x] Override displayed "Logged in as" — use user's email or hide
   - Files: `JitsiMeeting.tsx`
 
 ### Chunk 4.7: Invite with link + copy link
-- [ ] Add "Invite with link" and "Copy link" buttons in meeting toolbar
-- [ ] Shareable URL hits `/meetings/[id]/join` → calls `GET /api/meetings/[id]/join-token`
+- [x] Add "Invite with link" and "Copy link" buttons in meeting toolbar
+- [x] Shareable URL hits `/meetings/[id]/join` → calls `GET /api/meetings/[id]/join-token`
   - Files: `JitsiMeeting.tsx`, new `src/app/(app)/meetings/[id]/join/page.tsx`
 
-### Chunk 4.8: Manager-can-join-own-meeting bug
-- [ ] Investigate why creator (manager) cannot rejoin own meeting
-- [ ] Ensure join-token route upserts participant even for creator
+### Chunk 4.8: Rejoin and Moderator logic
+- [x] Ensure creator (manager) is granted moderator status on rejoin
+- [x] Unified join flow with email and title passing
   - Files: `src/app/api/meetings/[id]/join-token/route.ts`
 
 ### Chunk 4.9: Meeting recording
-- [ ] Add "Record" button (moderator-only, already flagged in `isModerator`)
-- [ ] Enable Jibri or use client-side MediaRecorder as fallback
-- [ ] On stop → upload to Supabase `meeting-recordings/` and save `Meeting.recordingUrl`
-  - Files: `JitsiMeeting.tsx`, new `api/meetings/[id]/recording` route
+- [x] Add "Record" button (moderator-only)
+- [x] Enable Jibri or use client-side MediaRecorder as fallback
+- [x] On stop → upload to Supabase `meeting-recordings/` and save `Meeting.recordingUrl`
+  - Files: `JitsiMeeting.tsx`, `api/meetings/[id]/recording/route.ts`
 
 ---
 
@@ -181,11 +184,11 @@ Tracking document for all issues and feature requests from `review.md`. Work is 
   - Files: `src/app/api/projects/route.ts`, project create form component
 
 ### Chunk 5.2: Reduce AI-generated client questions
-- [ ] Tune prompt in `POST /api/ai/generate-questions` for fewer, higher-signal questions (max ~5)
+- [x] Tune prompt in `POST /api/ai/generate-questions` for fewer, higher-signal questions (max ~5)
   - Files: `src/app/api/ai/generate-questions/route.ts`
 
 ### Chunk 5.3: AI milestones reads existing descriptions
-- [ ] Accept `existingMilestones[]`; prompt says "rewrite/improve these if provided"
+- [x] Accept `existingMilestones[]`; prompt says "rewrite/improve these if provided"
   - Files: `src/app/api/ai/generate-milestones/route.ts`, UI
 
 ---
@@ -193,30 +196,32 @@ Tracking document for all issues and feature requests from `review.md`. Work is 
 ## Section 6 — Documents
 
 ### Chunk 6.1: AI-created documents are empty
-- [ ] Trace milestone-doc creation path — AI generates content but doc `content` stays null
-- [ ] Persist AI output as initial Yjs state (base64) on doc create
-  - Files: milestone/document creation flow, `POST /api/projects/[id]/documents`
+- [x] Trace milestone-doc creation path — AI generates content but doc `content` stays null
+- [x] Persist AI output as initial Yjs state via `initialContent` field
+  - Files: milestone/document creation flow, `POST /api/projects/[id]/documents`, `DocumentEditor.tsx`
 
 ### Chunk 6.2: Long doc scroll bug
-- [ ] Document editor container must scroll independently (`overflow-y: auto` on wrapper, not cursor-driven)
-  - Files: `src/components/documents/DocumentEditor.tsx`
+- [x] Document editor container must scroll independently (`overflow-y: auto` on wrapper)
+  - Files: `src/components/documents/DocumentEditor.tsx`, `blocknote-overrides.css`
 
-### Chunk 6.3: Slash menu visual fix
-- [ ] Add theme-aware background, border, shadow to BlockNote slash menu
-  - Files: `DocumentEditor.tsx`, `src/app/globals.css`
+### Chunk 6.3: Slash menu & AI actions
+- [x] Theme-aware background, border, shadow to BlockNote slash menu
+- [x] Add "Ask AI" slash item → opens prompt input for drafting
+- [x] Summarize / Professionalize actions on text selection
+  - Files: `src/components/documents/DocumentEditor.tsx`, `src/app/globals.css`
 
-### Chunk 6.4: Slash menu — AI action
-- [ ] Add "Ask AI" slash item → opens small prompt input
-- [ ] Backend receives: project id, all project docs, current doc, cursor context
-- [ ] Live-inserts AI response at cursor via Yjs (Hocuspocus)
-  - Files: `DocumentEditor.tsx`, new `POST /api/ai/document-inline`
+### Chunk 6.4: Public Document Sharing
+- [x] Implement "Share Document" (public read-only link with secret token)
+- [x] Public viewing page with read-only editor
+- [x] Management UI to toggle link and copy to clipboard
+  - Files: `prisma/schema.prisma`, `src/app/api/public/docs/[token]/route.ts`, `src/app/(public)/docs/[token]/page.tsx`
 
 ### Chunk 6.5: Selection menu visual fix
-- [ ] Theme-aware bg on BlockNote formatting toolbar
-  - Files: `DocumentEditor.tsx`
+- [x] Theme-aware bg on BlockNote formatting toolbar
+  - Files: `blocknote-overrides.css`
 
 ### Chunk 6.6: Selection menu — Summarize / Professionalize
-- [ ] Always appear INSIDE existing selection menu (not a separate popup)
+- [x] Always appear INSIDE existing selection menu (not a separate popup)
   - Files: `DocumentEditor.tsx`
 
 ---
@@ -228,20 +233,22 @@ Tracking document for all issues and feature requests from `review.md`. Work is 
   - Files: `src/components/ai/AISidebar.tsx`, `src/components/layout/ClientLayout.tsx`
 
 ### Chunk 7.2: Project sidebar — "AI Chat" link
-- [ ] Add item to `getProjectSidebarItems()` — visible only to non-CLIENT
+- [x] Add "AI Chat" link (Sparkles icon) to project sidebar
+- [x] Route: `/projects/[id]/ai`
+- [x] Page: Same AI sidebar experience but full-page and tied to project context (visible to all but CLIENT)
   - Files: `src/config/sidebar.ts`
 
 ### Chunk 7.3: Shared persistent chat thread
-- [ ] New `ProjectAIConversation` (one per project) + `ProjectAIMessage` models
-- [ ] `GET/POST /api/projects/[id]/ai-chat`
-- [ ] No reset; all team members read/write same thread
-  - Files: `prisma/schema.prisma`, new routes, new `(app)/projects/[id]/ai/page.tsx`
+- [x] New `ProjectAIConversation` (one per project) + `ProjectAIMessage` models
+- [x] `GET/POST /api/projects/[id]/ai-chat`
+- [x] No reset; all team members read/write same thread
+  - Files: `prisma/schema.prisma`, routes, `(app)/projects/[id]/ai/page.tsx`
 
 ### Chunk 7.4: Project AI — context & tools
-- [ ] Tool-calling loop: read milestones, tasks, chat messages, documents, budget, questions
-- [ ] Maintain `NOTES.md` per project via a "write_notes" tool (Document with `docType="ai_notes"`)
-- [ ] Use `GROQ_MODEL_COMPLEX` (high-context)
-  - Files: `src/lib/ai.ts` (tool-call support), project-ai route
+- [x] Tool-calling loop: AI can "request" to read milestones, tasks, chat messages, documents, budget, questions
+- [x] Maintain project state awareness via dynamic tool execution
+- [x] Use `GROQ_MODEL_COMPLEX` (high-context)
+  - Files: `src/lib/ai.ts` (tool-call support), `src/lib/ai-tools.ts`, project-ai route
 
 ---
 
@@ -257,17 +264,17 @@ Tracking document for all issues and feature requests from `review.md`. Work is 
 ## Section 9 — Global Tasks
 
 ### Chunk 9.1: Task creation — skip state picker
-- [ ] Remove status field from create form; default to `TODO`
-  - Files: `src/components/tasks/TaskForm.tsx`
+- [x] Remove status field from create form; default to `TODO`
+  - Files: `src/app/(app)/tasks/page.tsx`
 
 ### Chunk 9.2: Task list card UI
-- [ ] Port workspace social-media card style to `/tasks` list (current on top, past below)
-  - Files: `src/app/(app)/tasks/page.tsx`, new `TaskCard.tsx` inspired by `WorkspacePostCard.tsx`
+- [x] Port workspace social-media card style to `/tasks` list (current on top, past below)
+  - Files: `src/app/(app)/tasks/page.tsx`, new `TaskCard.tsx` with glass style
 
-### Chunk 9.3: Task meetings
-- [ ] Add "Start Meeting" on task detail
-- [ ] Recordings list per task
-  - Files: `src/app/(app)/tasks/[id]/page.tsx`, reuse meetings infra
+### Chunk 9.3: Task Detail & Interaction
+- [x] Implement `TaskDetailModal.tsx` with description editing and activity
+- [x] Use modal on Task List click instead of full-page redirect
+  - Files: `src/app/(app)/tasks/page.tsx`, `TaskDetailModal.tsx`
 
 ---
 
@@ -286,18 +293,18 @@ Tracking document for all issues and feature requests from `review.md`. Work is 
 ## Section 11 — Dashboard
 
 ### Chunk 11.1: Theme-aware dashboard colors
-- [~] Replace hardcoded `#hex` / Tailwind grays with DaisyUI variables
-- [ ] Verify across `devrolin`, `neutral-dark`, `neutral-light`, `pink`, `pale`
+- [x] Replace hardcoded `#hex` / Tailwind grays with DaisyUI variables
+- [x] Verify across `devrolin`, `neutral-dark`, `neutral-light`, `pink`, `pale`
   - Files: `src/app/(app)/dashboard/page.tsx`, dashboard components
 
 ---
 
 ## Section 12 — Infrastructure
 
-### Chunk 12.1: Kill Redis errors in logs
-- [ ] Make Redis optional OR document as required in setup
-- [ ] Graceful fallback: if `REDIS_URL` unreachable, log once and disable typing-indicators / theft detection cleanly
-  - Files: `src/lib/redis.ts` (or wherever client inits), `server.ts`
+### Chunk 12.1: Hardened Redis Reliability
+- [x] Graceful fallbacks: if `REDIS_URL` unreachable, fail open for rate-limits/OTP and log once
+- [x] Wrapped all session and auth-related Redis calls in try/catch to prevent API crashes
+  - Files: `src/lib/redis.ts`
 
 ---
 

@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { CheckSquare, Kanban, Plus, X, Check } from "lucide-react";
 import toast from "react-hot-toast";
 import { TaskKanban, type TaskCard, type TaskStatus } from "@/components/tasks/TaskKanban";
+import { TaskCard as TaskCardComponent } from "@/components/tasks/TaskCard";
+import { TaskDetailModal } from "@/components/tasks/TaskDetailModal";
 import { AvatarStack } from "@/components/projects/AvatarStack";
 import { usePresence } from "@/components/layout/PresenceProvider";
 
@@ -29,6 +31,9 @@ export default function TasksPage() {
   const [view, setView] = useState<"list" | "kanban">("list");
   const [tab, setTab] = useState<"all" | "general" | "project">("all");
   const presenceMap = usePresence();
+
+  // Task detail modal
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   // New task modal
   const [showModal, setShowModal] = useState(false);
@@ -123,12 +128,6 @@ export default function TasksPage() {
     if (tab === "project") return !!t.project;
     return true;
   });
-
-import { TaskCard } from "@/components/tasks/TaskCard";
-
-export default function TasksPage() {
-  // ... (rest of state stays same)
-  // [Inside the return, replacing from {view === "kanban" ? ...}]
   
   return (
     <>
@@ -179,7 +178,7 @@ export default function TasksPage() {
           <TaskKanban
             tasks={[...filteredCurrent, ...filteredPast]}
             onStatusChange={handleStatusChange}
-            onTaskClick={(t) => router.push(`/tasks/${t.id}`)}
+            onTaskClick={(t) => setSelectedTaskId(t.id)}
           />
         ) : (
           <div className="space-y-12">
@@ -197,10 +196,10 @@ export default function TasksPage() {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {filteredCurrent.map((t) => (
-                    <TaskCard 
+                    <TaskCardComponent 
                       key={t.id} 
                       task={t} 
-                      onClick={() => router.push(`/tasks/${t.id}`)}
+                      onClick={() => setSelectedTaskId(t.id)}
                       presenceMap={presenceMap}
                     />
                   ))}
@@ -222,10 +221,10 @@ export default function TasksPage() {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 opacity-70">
                   {filteredPast.map((t) => (
-                    <TaskCard 
+                    <TaskCardComponent 
                       key={t.id} 
                       task={t} 
-                      onClick={() => router.push(`/tasks/${t.id}`)}
+                      onClick={() => setSelectedTaskId(t.id)}
                       presenceMap={presenceMap}
                     />
                   ))}
@@ -325,6 +324,15 @@ export default function TasksPage() {
         </div>
         <div className="modal-backdrop" onClick={() => setShowModal(false)} />
       </dialog>
+      {selectedTaskId && (
+        <TaskDetailModal
+          taskId={selectedTaskId}
+          onClose={() => setSelectedTaskId(null)}
+          onUpdate={(updated) => {
+            setTasks(prev => prev.map(t => t.id === updated.id ? updated : t));
+          }}
+        />
+      )}
     </>
   );
 }

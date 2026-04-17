@@ -79,7 +79,7 @@ export function AttendanceOvertimeModal({ isOpen, onClose, checkInId }: Attendan
         </div>
 
         <p className="text-[10px] text-center text-base-content/40 mt-4">
-          If no action is taken, you will remain active but won't accumulate overtime until confirmed.
+          If no action is taken, you will remain active but won&apos;t accumulate overtime until confirmed.
         </p>
       </div>
       <div className="modal-backdrop bg-black/40 backdrop-blur-sm" onClick={onClose} />

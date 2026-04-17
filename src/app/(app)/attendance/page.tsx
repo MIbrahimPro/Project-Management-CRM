@@ -242,10 +242,10 @@ export default function AttendancePage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3">
                       <UserAvatar 
-                        name={e.name} 
-                        image={e.avatarSignedUrl} 
-                        size="md" 
-                        status={active ? "online" : "offline"}
+                        user={{ name: e.name, profilePicUrl: e.avatarSignedUrl }} 
+                        size={48} 
+                        showPresence
+                        isOnline={!!active}
                       />
                       <div>
                         <h3 className="font-semibold text-base-content leading-none">{e.name}</h3>

@@ -22,6 +22,18 @@ export function useSidebarOverride() {
   return useContext(SidebarOverrideContext);
 }
 
+interface UserContextValue {
+  user: ClientLayoutProps["user"];
+}
+
+const UserContext = createContext<UserContextValue | null>(null);
+
+export function useUser() {
+  const ctx = useContext(UserContext);
+  if (!ctx) throw new Error("useUser must be used within ClientLayout");
+  return ctx.user;
+}
+
 interface ClientLayoutProps {
   user: {
     id: string;
@@ -94,6 +106,7 @@ export function ClientLayout({ user, sidebarItems, children }: ClientLayoutProps
 
   return (
     <PresenceProvider>
+    <UserContext.Provider value={{ user }}>
     <SidebarOverrideContext.Provider value={{ setOverride: setSidebarOverride }}>
     <FetchInterceptor />
     <div className="flex h-screen overflow-hidden bg-base-100">
@@ -150,6 +163,7 @@ export function ClientLayout({ user, sidebarItems, children }: ClientLayoutProps
       />
     </div>
     </SidebarOverrideContext.Provider>
+    </UserContext.Provider>
     </PresenceProvider>
   );
 }

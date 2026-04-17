@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 const Schema = z.object({
   title: z.string().min(3),
   description: z.string().min(10),
+  existingMilestones: z.array(z.object({ title: z.string(), content: z.string().optional() })).optional(),
 });
 
 interface AIMilestone {
@@ -20,13 +21,16 @@ export const POST = apiHandler(async (req: NextRequest) => {
   if (!["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(role)) forbidden();
 
   const body = (await req.json()) as unknown;
-  const { title, description } = Schema.parse(body);
+  const { title, description, existingMilestones } = Schema.parse(body);
+  const existingText = existingMilestones?.length 
+    ? `\n\nExisting Draft Milestones (please improve and expand these):\n${existingMilestones.map((m, i) => `[${i+1}] ${m.title}${m.content ? `\n${m.content}` : ""}`).join("\n\n")}`
+    : "";
 
   const milestones = await callAIJson<AIMilestone[]>(
     [
       {
         role: "user",
-        content: `Generate milestone plan for the following software project.
+        content: `Generate ${existingText ? "an improved" : "a"} milestone plan for the following software project.${existingText}
 
 Project: ${title}
 Description: ${description}

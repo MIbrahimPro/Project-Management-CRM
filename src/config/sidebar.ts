@@ -47,16 +47,24 @@ export function getAdminSidebarItems(viewerRole: string): SidebarItem[] {
   return base;
 }
 
-export function getProjectSidebarItems(projectId: string): SidebarItem[] {
-  return [
+export function getProjectSidebarItems(projectId: string, role: string): SidebarItem[] {
+  const items: SidebarItem[] = [
     { label: "Back to Projects", href: "/projects",                          icon: "ArrowLeft", isBackButton: true },
     { label: "Dashboard",         href: `/projects/${projectId}`,              icon: "LayoutDashboard" },
-    { label: "AI Chat",           href: `/projects/${projectId}/ai`,           icon: "Sparkles" },
+  ];
+
+  if (role !== "CLIENT") {
+    items.push({ label: "AI Chat", href: `/projects/${projectId}/ai`, icon: "Sparkles" });
+  }
+
+  items.push(
     { label: "Chat",              href: `/projects/${projectId}/chat`,         icon: "MessageSquare" },
     { label: "Questions",         href: `/projects/${projectId}/questions`,    icon: "MessageCircleQuestion", badgeKey: "questionsUnanswered" },
     { label: "Documents",         href: `/projects/${projectId}/documents`,    icon: "FileText" },
     { label: "Vault",             href: `/projects/${projectId}/vault`,        icon: "KeyRound" },
-  ];
+  );
+
+  return items;
 }
 
 export function getHrSidebarItems(): SidebarItem[] {

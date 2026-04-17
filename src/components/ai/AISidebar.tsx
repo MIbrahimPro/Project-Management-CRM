@@ -40,19 +40,161 @@ function usePageContext() {
   };
 }
 
-function AISidebarInner() {
-  const [isDocked, setIsDocked] = useState(false);
-  const [open, setOpen] = useState(false);
+export interface ChatAssistantProps {
+  projectId?: string;
+  taskId?: string;
+  workspaceId?: string;
+  className?: string;
+}
+
+export function ChatAssistant({ projectId, taskId, workspaceId, className = "" }: ChatAssistantProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [width, setWidth] = useState<number>(360);
-  const resizingRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const contextLabel = projectId ? "Project" : taskId ? "Task" : workspaceId ? "Social Media" : null;
+
+  function newChat() {
+    setMessages([]);
+    setInput("");
+  }
+
+  async function send() {
+    const text = input.trim();
+    if (!text || loading) return;
+
+    const userMsg: Message = { role: "user", content: text };
+    const nextMessages = [...messages, userMsg];
+    setMessages(nextMessages);
+    setInput("");
+    setLoading(true);
+
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+
+    try {
+      const res = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: nextMessages,
+          projectId,
+          taskId,
+          workspaceId,
+        }),
+      });
+      const data = (await res.json()) as { data?: { content: string } };
+      const reply: Message = {
+        role: "assistant",
+        content: data.data?.content ?? "Sorry, I couldn't generate a response.",
+      };
+      setMessages((prev) => [...prev, reply]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "Network error. Please try again." },
+      ]);
+    } finally {
+      setLoading(false);
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+    }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void send();
+    }
+  }
+
+  return (
+    <div className={`flex flex-col h-full min-h-0 ${className}`}>
+      {/* Header (Minimal for ChatAssistant, AISidebar handles its own) */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-base-300 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-primary" />
+          <span className="font-semibold text-base-content text-sm">AI Assistant</span>
+          {contextLabel && (
+            <span className="badge badge-xs badge-primary">{contextLabel}</span>
+          )}
+        </div>
+        <button className="btn btn-ghost btn-xs gap-1" onClick={newChat} title="New conversation">
+          <Plus className="w-3.5 h-3.5" /> New
+        </button>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0 bg-base-200/30">
+        {messages.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full text-center gap-3 text-base-content/30">
+            <Sparkles className="w-8 h-8 opacity-20" />
+            <div>
+              <p className="text-sm font-medium">DevRolin Assistant</p>
+              <p className="text-xs mt-0.5 max-w-[200px]">
+                Ask me anything about this {contextLabel?.toLowerCase() || "workspace"}...
+              </p>
+            </div>
+          </div>
+        )}
+        {messages.map((m, i) => (
+          <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+            <div
+              className={`max-w-[90%] sm:max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm break-words shadow-sm ${
+                m.role === "user"
+                  ? "bg-primary text-primary-content rounded-br-sm whitespace-pre-wrap"
+                  : "bg-base-100 text-base-content border border-base-300 rounded-bl-sm whitespace-normal"
+              }`}
+            >
+              {m.role === "assistant" ? <AiMarkdown content={m.content} /> : m.content}
+            </div>
+          </div>
+        ))}
+        {loading && (
+          <div className="flex justify-start">
+            <div className="bg-base-100 border border-base-300 rounded-2xl rounded-bl-sm px-3.5 py-2.5">
+              <span className="loading loading-dots loading-sm text-primary" />
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input */}
+      <div className="flex-shrink-0 border-t border-base-300 p-3 bg-base-100">
+        <div className="flex items-end gap-2 bg-base-200/50 border border-base-300 rounded-xl px-3 py-2 focus-within:border-primary transition-colors">
+          <textarea
+            ref={textareaRef}
+            className="flex-1 bg-transparent resize-none text-sm text-base-content placeholder-base-content/30 outline-none min-h-[36px] max-h-[120px]"
+            placeholder="Ask anything…"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            rows={1}
+          />
+          <button
+            className="btn btn-primary btn-sm btn-circle flex-shrink-0 mb-0.5"
+            onClick={() => void send()}
+            disabled={!input.trim() || loading}
+          >
+            <Send className="w-3.5 h-3.5" />
+          </button>
+        </div>
+        <p className="text-[10px] text-base-content/30 mt-1.5 text-center">
+          Enter to send · Shift+Enter for newline
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function AISidebarInner() {
+  const [isDocked, setIsDocked] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [width, setWidth] = useState<number>(360);
+  const resizingRef = useRef(false);
+
   const ctx = usePageContext();
-  const hasContext = !!(ctx.projectId || ctx.taskId || ctx.workspaceId);
 
   useEffect(() => {
     const saved = typeof window !== "undefined" ? localStorage.getItem("ai-sidebar-width") : null;
@@ -98,60 +240,6 @@ function AISidebarInner() {
     document.body.style.userSelect = "none";
   }
 
-  function newChat() {
-    setMessages([]);
-    setInput("");
-  }
-
-  async function send() {
-    const text = input.trim();
-    if (!text || loading) return;
-
-    const userMsg: Message = { role: "user", content: text };
-    const nextMessages = [...messages, userMsg];
-    setMessages(nextMessages);
-    setInput("");
-    setLoading(true);
-
-    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
-
-    try {
-      const res = await fetch("/api/ai/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: nextMessages,
-          ...(ctx.projectId ? { projectId: ctx.projectId } : {}),
-          ...(ctx.taskId ? { taskId: ctx.taskId } : {}),
-          ...(ctx.workspaceId ? { workspaceId: ctx.workspaceId } : {}),
-        }),
-      });
-      const data = (await res.json()) as { data?: { content: string } };
-      const reply: Message = {
-        role: "assistant",
-        content: data.data?.content ?? "Sorry, I couldn't generate a response.",
-      };
-      setMessages((prev) => [...prev, reply]);
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "Network error. Please try again." },
-      ]);
-    } finally {
-      setLoading(false);
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
-    }
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      void send();
-    }
-  }
-
-  const contextLabel = ctx.projectId ? "Project" : ctx.taskId ? "Task" : ctx.workspaceId ? "Social Media" : null;
-
   return (
     <>
       {!isDocked && (
@@ -177,7 +265,7 @@ function AISidebarInner() {
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="fixed inset-y-0 right-0 z-40 flex flex-col bg-base-200 border-l border-base-300 shadow-2xl w-full"
+            className="fixed inset-y-0 right-0 z-40 flex flex-col bg-base-100 border-l border-base-300 shadow-2xl"
             style={{ maxWidth: "100vw", width: typeof window !== "undefined" && window.innerWidth >= 640 ? `${width}px` : "100%" }}
           >
             {/* Drag handle */}
@@ -187,101 +275,27 @@ function AISidebarInner() {
               title="Drag to resize"
             />
 
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-base-300 flex-shrink-0">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-primary" />
-                <span className="font-semibold text-base-content text-sm">AI Assistant</span>
-                {contextLabel && (
-                  <span className="badge badge-xs badge-primary">{contextLabel}</span>
-                )}
-              </div>
-              <div className="flex items-center gap-1">
-                <button
-                  className="btn btn-ghost btn-xs gap-1"
-                  onClick={handleToggleDock}
-                  title={isDocked ? "Pop out to floating widget" : "Dock to side"}
-                >
-                  <LayoutGrid className="w-3.5 h-3.5" />
-                  {isDocked ? "Pop out" : "Dock"}
-                </button>
-                <button className="btn btn-ghost btn-xs gap-1" onClick={newChat} title="New conversation">
-                  <Plus className="w-3.5 h-3.5" /> New
-                </button>
-                <button className="btn btn-ghost btn-sm btn-circle" onClick={() => setOpen(false)}>
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+            {/* Custom Header for Sidebar Mode */}
+            <div className="flex items-center justify-end px-2 py-1 bg-base-200 border-b border-base-300">
+              <button
+                className="btn btn-ghost btn-xs gap-1"
+                onClick={handleToggleDock}
+                title={isDocked ? "Pop out to floating widget" : "Dock to side"}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                {isDocked ? "Pop out" : "Dock"}
+              </button>
+              <button className="btn btn-ghost btn-sm btn-circle" onClick={() => setOpen(false)}>
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            {hasContext && (
-              <div className="px-4 py-1.5 bg-primary/5 border-b border-base-300 flex-shrink-0">
-                <p className="text-xs text-primary/60">
-                  Context-aware — conversations are saved per {contextLabel?.toLowerCase()}
-                </p>
-              </div>
-            )}
-
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
-              {messages.length === 0 && (
-                <div className="flex flex-col items-center justify-center h-full text-center gap-3 text-base-content/30">
-                  <Sparkles className="w-8 h-8 opacity-20" />
-                  <div>
-                    <p className="text-sm font-medium">DevRolin Assistant</p>
-                    <p className="text-xs mt-0.5">
-                      Ask me anything — project planning, writing, HR, code review…
-                    </p>
-                  </div>
-                </div>
-              )}
-              {messages.map((m, i) => (
-                <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                  <div
-                    className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm break-words ${
-                      m.role === "user"
-                        ? "bg-primary text-primary-content rounded-br-sm whitespace-pre-wrap"
-                        : "bg-base-100 text-base-content border border-base-300 rounded-bl-sm whitespace-normal"
-                    }`}
-                  >
-                    {m.role === "assistant" ? <AiMarkdown content={m.content} /> : m.content}
-                  </div>
-                </div>
-              ))}
-              {loading && (
-                <div className="flex justify-start">
-                  <div className="bg-base-100 border border-base-300 rounded-2xl rounded-bl-sm px-3.5 py-2.5">
-                    <span className="loading loading-dots loading-sm text-primary" />
-                  </div>
-                </div>
-              )}
-              <div ref={bottomRef} />
-            </div>
-
-            {/* Input */}
-            <div className="flex-shrink-0 border-t border-base-300 p-3">
-              <div className="flex items-end gap-2 bg-base-100 border border-base-300 rounded-xl px-3 py-2">
-                <textarea
-                  ref={textareaRef}
-                  className="flex-1 bg-transparent resize-none text-sm text-base-content placeholder-base-content/30 outline-none min-h-[36px] max-h-[120px]"
-                  placeholder="Ask anything…"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  rows={1}
-                />
-                <button
-                  className="btn btn-primary btn-sm btn-circle flex-shrink-0 mb-0.5"
-                  onClick={() => void send()}
-                  disabled={!input.trim() || loading}
-                >
-                  <Send className="w-3.5 h-3.5" />
-                </button>
-              </div>
-              <p className="text-xs text-base-content/30 mt-1.5 text-center">
-                Enter to send · Shift+Enter for new line
-              </p>
-            </div>
+            <ChatAssistant 
+              projectId={ctx.projectId} 
+              taskId={ctx.taskId} 
+              workspaceId={ctx.workspaceId} 
+              className="flex-1"
+            />
           </motion.div>
         )}
       </AnimatePresence>

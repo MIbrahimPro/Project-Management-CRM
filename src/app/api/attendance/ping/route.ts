@@ -84,8 +84,8 @@ export const POST = apiHandler(async (req: NextRequest) => {
         type: "general_dm",
         members: {
           create: [
-            { userId: senderId, role: "member" },
-            { userId: targetUserId, role: "member" }
+            { userId: senderId },
+            { userId: targetUserId }
           ]
         }
       }

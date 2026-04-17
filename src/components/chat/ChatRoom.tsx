@@ -17,15 +17,19 @@ import {
   ChevronUp,
   Play,
   Pause,
+  Pin,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import { AvatarStack } from "@/components/projects/AvatarStack";
+import { ChatInfoModal } from "./ChatInfoModal";
+import { MessageContextMenu } from "./MessageContextMenu";
 import { usePresence } from "@/components/layout/PresenceProvider";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import toast from "react-hot-toast";
+import { AnimatePresence, motion } from "framer-motion";
 
 dayjs.extend(relativeTime);
 
@@ -60,11 +64,14 @@ interface Message {
   mediaType: string | null;
   isAiResponse: boolean;
   editedAt: string | null;
+  deliveredAt: string | null;
+  pinnedAt: string | null;
   deletedAt: string | null;
   createdAt: string;
   sender: Sender | null;
   replyTo: ReplyPreview | null;
   reactions: Reaction[];
+  receipts: { userId: string; readAt: string }[];
 }
 
 interface ChatRoomProps {
@@ -96,32 +103,32 @@ interface ChatRoomProps {
   };
 }
 
-// ── Common emojis (no external package) ─────────────────────────────────────
-const COMMON_EMOJIS = [
-  "👍","❤️","😂","🎉","😊","🔥","👏","🙌","💯","✅",
-  "😅","🤔","👀","💪","🚀","⭐","✨","😍","🙏","😎",
-];
+import Picker from "@emoji-mart/react";
+import data from "@emoji-mart/data";
 
 function EmojiPicker({ onSelect, onClose }: { onSelect: (e: string) => void; onClose: () => void }) {
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (!(e.target as HTMLElement).closest(".emoji-picker-container")) {
+        onClose();
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [onClose]);
+
   return (
-    <div className="absolute bottom-16 right-3 z-50 bg-base-200 border border-base-300 rounded-xl shadow-xl p-2 w-48">
-      <div className="flex flex-wrap gap-1">
-        {COMMON_EMOJIS.map((e) => (
-          <button
-            key={e}
-            className="text-lg p-1 rounded hover:bg-base-300 transition-colors"
-            onClick={() => onSelect(e)}
-          >
-            {e}
-          </button>
-        ))}
-      </div>
-      <button
-        className="w-full mt-1 text-xs text-base-content/40 hover:text-base-content/60"
-        onClick={onClose}
-      >
-        Close
-      </button>
+    <div className="absolute bottom-16 right-3 z-[100] emoji-picker-container shadow-2xl">
+      <Picker
+        data={data}
+        onEmojiSelect={(emoji: any) => {
+          onSelect(emoji.native);
+          onClose();
+        }}
+        theme="auto"
+        previewPosition="none"
+        skinTonePosition="none"
+      />
     </div>
   );
 }
@@ -351,7 +358,12 @@ export function ChatRoom({
   const [emojiPickerFor, setEmojiPickerFor] = useState<"input" | string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
+  const { statuses } = usePresence();
   const [recordingTime, setRecordingTime] = useState(0);
+  const [infoModalOpen, setInfoModalOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, msg: any } | null>(null);
+  const [isScrolledUp, setIsScrolledUp] = useState(false);
+  const [hasNewMessagesBelow, setHasNewMessagesBelow] = useState(false);
 
   const LONG_MESSAGE_THRESHOLD = 500;
 
@@ -465,7 +477,11 @@ export function ChatRoom({
     function onNewMessage(msg: Message) {
       if (msg.roomId === roomId) {
         setMessages((prev) => [...prev, msg]);
-        setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+        if (isScrolledUp) {
+          setHasNewMessagesBelow(true);
+        } else {
+          setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+        }
         socket!.emit("mark_read", roomId);
       }
     }
@@ -491,11 +507,29 @@ export function ChatRoom({
       );
     }
 
+    function onMessagesRead({ userId: readerId, messageIds, readAt }: { userId: string; messageIds: string[]; readAt: string }) {
+      setMessages((prev) =>
+        prev.map((m) =>
+          messageIds.includes(m.id)
+            ? { ...m, receipts: [...(m.receipts || []).filter(r => r.userId !== readerId), { userId: readerId, readAt }] }
+            : m
+        )
+      );
+    }
+
+    function onMessagePinned({ messageId, isPinned, pinnedAt }: { messageId: string; isPinned: boolean; pinnedAt: string | null }) {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, pinnedAt } : m))
+      );
+    }
+
     socket.on("new_message", onNewMessage);
     socket.on("user_typing", onTyping);
     socket.on("user_stopped_typing", onStoppedTyping);
     socket.on("message_reacted", onReacted);
     socket.on("message_deleted", onMessageDeleted);
+    socket.on("messages_read", onMessagesRead);
+    socket.on("message_pinned", onMessagePinned);
     socket.emit("mark_read", roomId);
 
     return () => {
@@ -504,6 +538,8 @@ export function ChatRoom({
       socket.off("user_stopped_typing", onStoppedTyping);
       socket.off("message_reacted", onReacted);
       socket.off("message_deleted", onMessageDeleted);
+      socket.off("messages_read", onMessagesRead);
+      socket.off("message_pinned", onMessagePinned);
     };
   }, [socket, connected, roomId, currentUser.id]);
 
@@ -540,6 +576,18 @@ export function ChatRoom({
       e.preventDefault();
       sendMessage();
     }
+  }
+
+  function handleScroll(e: React.UIEvent<HTMLDivElement>) {
+    const el = e.currentTarget;
+    const isBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 100;
+    setIsScrolledUp(!isBottom);
+    if (isBottom) setHasNewMessagesBelow(false);
+  }
+
+  function scrollToBottom() {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    setHasNewMessagesBelow(false);
   }
 
   // ── File upload ────────────────────────────────────────────────────────────
@@ -606,6 +654,21 @@ export function ChatRoom({
       : "document";
     void sendFile(file, type);
     e.target.value = "";
+  }
+
+  async function handleDeleteGroup() {
+    if (!confirm("Are you sure you want to delete this group for everyone? This cannot be undone.")) return;
+    try {
+      const res = await fetch(`/api/chat/rooms/${roomId}`, { method: "DELETE", credentials: "include" });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error || "Failed to delete group");
+      }
+      toast.success("Group deleted");
+      if (typeof window !== "undefined") window.location.href = "/chat";
+    } catch (e: any) {
+      toast.error(e.message);
+    }
   }
 
   // ── Voice recording ────────────────────────────────────────────────────────
@@ -739,7 +802,10 @@ export function ChatRoom({
           ) : roomDetails?.members && roomDetails.type !== "general_dm" ? (
             <AvatarStack users={roomDetails.members.slice(0, 3).map(m => m.user)} overflow={Math.max(0, roomDetails.members.length - 3)} />
           ) : null}
-          <div className="flex flex-col">
+          <div 
+            className="flex flex-col cursor-pointer hover:opacity-80 transition-opacity"
+            onClick={() => setInfoModalOpen(true)}
+          >
             <h2 className="font-semibold text-base-content leading-tight flex items-center gap-2">
               {roomName}
               {roomDetails?.type === "general_dm" ? (
@@ -834,8 +900,44 @@ export function ChatRoom({
         </div>
       </div>
 
+      {/* Pinned Messages Bar */}
+      {messages.filter(m => m.pinnedAt && !m.deletedAt).length > 0 && (
+        <div className="bg-base-200/80 backdrop-blur-sm border-b border-base-300 px-4 py-2 flex items-center gap-3 z-10 sticky top-0">
+          <Pin className="w-4 h-4 text-primary flex-shrink-0" />
+          <div className="flex-1 min-w-0 overflow-hidden relative h-5">
+            <AnimatePresence mode="wait">
+              {messages.filter(m => m.pinnedAt && !m.deletedAt).slice(0, 1).map(m => (
+                <motion.div
+                  key={m.id}
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  exit={{ y: -20, opacity: 0 }}
+                  className="absolute inset-0 flex items-center gap-2 cursor-pointer"
+                  onClick={() => {
+                    toast.success("Pinned: " + (m.content || "Media"));
+                  }}
+                >
+                  <span className="text-xs font-bold text-primary truncate">
+                    {m.sender?.name}:
+                  </span>
+                  <span className="text-xs truncate opacity-70">
+                    {m.content || "[Media]"}
+                  </span>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+          <div className="text-[10px] opacity-40 font-bold px-1.5 py-0.5 bg-base-300 rounded uppercase">
+            {messages.filter(m => m.pinnedAt && !m.deletedAt).length} Pinned
+          </div>
+        </div>
+      )}
+
       {/* ── Messages ── */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
+      <div 
+        className="flex-1 overflow-y-auto px-4 py-4 space-y-1 relative"
+        onScroll={handleScroll}
+      >
         {nextCursor && (
           <div className="text-center mb-2">
             <button
@@ -899,6 +1001,8 @@ export function ChatRoom({
                             }
                       }
                       size={28}
+                      showPresence={!isOwn && !!msg.sender}
+                      isOnline={msg.sender ? statuses[msg.sender.id] === "online" : false}
                     />
                   </div>
                 )}
@@ -928,18 +1032,35 @@ export function ChatRoom({
 
                   {/* Bubble */}
                   <div
-                    className={`relative px-3 py-2 rounded-2xl text-sm ${
+                    className={`relative px-3 py-2 rounded-2xl text-sm transition-all duration-200 ${
                       isOwn
                         ? "bg-primary text-primary-content rounded-tr-sm"
                         : isAI
                         ? "bg-base-300 text-base-content border border-primary/20 rounded-tl-sm"
                         : "bg-base-200 text-base-content rounded-tl-sm"
-                    } ${isDeleted ? "opacity-50 italic" : ""}`}
+                    } ${isDeleted ? "opacity-50 italic" : ""} ${contextMenu?.msg.id === msg.id ? "scale-[0.98] ring-2 ring-primary/20" : ""}`}
                     style={
                       isClientMsg && !isOwn
                         ? { borderLeft: `3px solid ${msg.sender?.clientColor ?? "#06b6d4"}` }
                         : {}
                     }
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      if (isDeleted) return;
+                      setContextMenu({ x: e.clientX, y: e.clientY, msg });
+                    }}
+                    onTouchStart={(e) => {
+                      if (isDeleted) return;
+                      const touch = e.touches[0];
+                      const timer = setTimeout(() => {
+                        setContextMenu({ x: touch.clientX, y: touch.clientY, msg });
+                        if (navigator.vibrate) navigator.vibrate(50);
+                      }, 500);
+                      (e.target as any)._longPressTimer = timer;
+                    }}
+                    onTouchEnd={(e) => {
+                      clearTimeout((e.target as any)._longPressTimer);
+                    }}
                   >
                     {isAI && (
                       <span className="text-xs text-primary/70 block mb-1 font-medium">
@@ -974,6 +1095,32 @@ export function ChatRoom({
                       <span className="text-xs opacity-50">
                         {dayjs(msg.createdAt).format("HH:mm")}
                       </span>
+                      {msg.pinnedAt && (
+                        <Pin className="w-3 h-3 text-primary" />
+                      )}
+                      {isOwn && !isDeleted && (
+                        <div className="flex items-center ml-1">
+                          {msg.receipts?.length > 0 ? (
+                            <div className="flex -space-x-1" title={roomDetails?.type !== "general_dm" ? `Read by ${msg.receipts.length} people` : "Read"}>
+                              <svg className="w-3.5 h-3.5 text-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="20 6 9 17 4 12" />
+                                <polyline points="22 6 11 17 6 12" style={{ transform: "translateX(4px)" }} />
+                              </svg>
+                            </div>
+                          ) : msg.deliveredAt ? (
+                            <div className="flex -space-x-1" title="Delivered">
+                              <svg className="w-3.5 h-3.5 opacity-30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="20 6 9 17 4 12" />
+                                <polyline points="22 6 11 17 6 12" style={{ transform: "translateX(4px)" }} />
+                              </svg>
+                            </div>
+                          ) : (
+                            <svg className="w-3.5 h-3.5 opacity-30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          )}
+                        </div>
+                      )}
                       {msg.editedAt && (
                         <span className="text-xs opacity-40">(edited)</span>
                       )}
@@ -1068,6 +1215,25 @@ export function ChatRoom({
         )}
 
         <div ref={messagesEndRef} />
+
+        {/* Scroll to bottom floating button */}
+        <AnimatePresence>
+          {isScrolledUp && (
+            <div className="sticky bottom-4 right-4 flex justify-end z-30 pointer-events-none">
+              <button
+                onClick={scrollToBottom}
+                className="btn btn-circle btn-primary shadow-xl pointer-events-auto"
+              >
+                <div className="relative">
+                  <ChevronDown className="w-6 h-6" />
+                  {hasNewMessagesBelow && (
+                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-error rounded-full border-2 border-primary animate-pulse" />
+                  )}
+                </div>
+              </button>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Emoji picker */}
@@ -1322,6 +1488,41 @@ export function ChatRoom({
           </div>
         </div>
       )}
+
+      <ChatInfoModal
+        isOpen={infoModalOpen}
+        onClose={() => setInfoModalOpen(false)}
+        roomId={roomId}
+        roomName={roomName}
+        roomType={roomDetails?.type || "general_dm"}
+        members={roomDetails?.members || []}
+        currentUser={currentUser}
+        onDeleteGroup={handleDeleteGroup}
+      />
+
+      <AnimatePresence>
+        {contextMenu && (
+          <MessageContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            isOwn={contextMenu.msg.senderId === currentUser.id}
+            content={contextMenu.msg.content}
+            onClose={() => setContextMenu(null)}
+            onCopy={() => {
+              if (contextMenu.msg.content) {
+                navigator.clipboard.writeText(contextMenu.msg.content);
+                toast.success("Copied to clipboard");
+              }
+            }}
+            onReply={() => setReplyTo(contextMenu.msg)}
+            onReact={(emoji) => socket?.emit("react", { messageId: contextMenu.msg.id, emoji })}
+            onDelete={() => handleDeleteMessage(contextMenu.msg.id)}
+            onPin={() => socket?.emit("pin_message", { messageId: contextMenu.msg.id, isPinned: !contextMenu.msg.pinnedAt })}
+            isPinned={!!contextMenu.msg.pinnedAt}
+            canPin={["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(currentUser.role) || roomDetails?.members.find(m => m.userId === currentUser.id)?.isGroupAdmin}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

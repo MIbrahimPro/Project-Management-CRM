@@ -3,21 +3,22 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
-import { useSidebarOverride } from "@/components/layout/ClientLayout";
+import { useSidebarOverride, useUser } from "@/components/layout/ClientLayout";
 import { getProjectSidebarItems } from "@/config/sidebar";
 
 export default function ProjectLayout({ children }: { children: React.ReactNode }) {
   const params = useParams<{ id: string }>();
   const pathname = usePathname();
   const { setOverride } = useSidebarOverride();
+  const user = useUser();
   const projectId = params?.id ?? null;
   const [projectTitle, setProjectTitle] = useState<string>("");
 
   useEffect(() => {
     if (!projectId) return;
-    setOverride(getProjectSidebarItems(projectId));
+    setOverride(getProjectSidebarItems(projectId, user.role));
     return () => setOverride(null);
-  }, [projectId, setOverride]);
+  }, [projectId, setOverride, user.role]);
 
   useEffect(() => {
     if (!projectId) return;

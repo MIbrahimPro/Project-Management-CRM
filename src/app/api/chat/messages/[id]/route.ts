@@ -5,7 +5,7 @@ import type { Server as SocketIOServer } from "socket.io";
 
 export const dynamic = "force-dynamic";
 
-export const DELETE = apiHandler(async (req: NextRequest, { params }: { params: { id: string } }) => {
+export const DELETE = apiHandler(async (req: NextRequest, { params }: any) => {
   const userId = req.headers.get("x-user-id") ?? forbidden();
   const userRole = req.headers.get("x-user-role") ?? "";
 
@@ -14,14 +14,14 @@ export const DELETE = apiHandler(async (req: NextRequest, { params }: { params: 
     select: { senderId: true, roomId: true },
   });
 
-  if (!message) return notFound("Message not found");
+  if (!message) return notFound();
 
   // Only sender or Super Admin can delete for everyone
   const isOwner = message.senderId === userId;
   const isSuperAdmin = userRole === "SUPER_ADMIN";
 
   if (!isOwner && !isSuperAdmin) {
-    return forbidden("You can only delete your own messages");
+    return forbidden();
   }
 
   await prisma.message.update({

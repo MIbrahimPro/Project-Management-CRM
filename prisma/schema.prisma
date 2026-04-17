@@ -197,6 +197,9 @@ model User {
   contracts             Contract[]               @relation("UserContracts")
   uploadedContracts     ContractVersion[]        @relation("ContractUploader")
   uploadedRecordings    MeetingRecording[]       @relation("RecordingUploader")
+  messageReceipts       MessageReceipt[]
+  projectAiMessages     ProjectAIMessage[]
+  auditLogs             AuditLog[]
 
   @@index([email])
   @@index([role])
@@ -288,6 +291,7 @@ model Project {
   secrets          ProjectSecret[]
   aiContexts       AIContext[]
   aiConversations  AIConversation[]
+  projectAIConversation ProjectAIConversation?
 
   @@index([status])
   @@index([clientId])
@@ -409,8 +413,11 @@ model Document {
   parentId    String?
   parent      Document?      @relation("DocTree", fields: [parentId], references: [id])
   children    Document[]     @relation("DocTree")
-  createdAt        DateTime      @default(now())
+  createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
+  shareToken  String?        @unique
+  isShared    Boolean        @default(false)
+  initialContent String?     @db.Text
 
   @@index([projectId])
   @@index([milestoneId])
@@ -441,6 +448,7 @@ model ChatRoom {
   createdBy          User?    @relation("ChatRoomCreator", fields: [createdById], references: [id])
   adminsOnlyPosting  Boolean  @default(false)
   avatarUrl          String?
+  deletedAt          DateTime?
   createdAt          DateTime @default(now())
 
   members  ChatRoomMember[]
@@ -485,12 +493,26 @@ model Message {
   forwardedFromId String?
   isAiResponse    Boolean   @default(false)
   editedAt        DateTime?
+  deliveredAt     DateTime?
+  pinnedAt        DateTime?
   createdAt       DateTime  @default(now())
 
   reactions MessageReaction[]
+  receipts  MessageReceipt[]
 
   @@index([roomId, createdAt])
   @@index([senderId])
+}
+
+model MessageReceipt {
+  id        String   @id @default(cuid())
+  messageId String
+  message   Message  @relation(fields: [messageId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  readAt    DateTime @default(now())
+
+  @@unique([messageId, userId])
 }
 
 model MessageReaction {
@@ -901,6 +923,7 @@ model TaskAssignee {
 model AuditLog {
   id        String   @id @default(cuid())
   userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
   action    String
   entity    String
   entityId  String?
@@ -957,6 +980,26 @@ model AIConversation {
 
   @@unique([userId, projectId, taskId, workspaceId])
   @@index([userId])
+}
+
+model ProjectAIConversation {
+  id        String             @id @default(cuid())
+  projectId String             @unique
+  project   Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  messages  ProjectAIMessage[]
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+}
+
+model ProjectAIMessage {
+  id             String                @id @default(cuid())
+  conversationId String
+  conversation   ProjectAIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String                // "user" | "assistant" | "system"
+  content        String                @db.Text
+  userId         String?
+  user           User?                 @relation(fields: [userId], references: [id])
+  createdAt      DateTime              @default(now())
 }
 
 // ============================================================

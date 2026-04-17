@@ -7,10 +7,9 @@ import { z } from "zod";
 
 const CONTRACT_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "HR"];
 
-/**
- * GET /api/contracts
- * List contracts. Managers/HR see all, others see own.
- */
+export const GET = apiHandler(async (req: NextRequest) => {
+  const userId = req.headers.get("x-user-id")!;
+  const userRole = req.headers.get("x-user-role")!;
   const isManager = CONTRACT_ROLES.includes(userRole);
 
   if (!isManager) {

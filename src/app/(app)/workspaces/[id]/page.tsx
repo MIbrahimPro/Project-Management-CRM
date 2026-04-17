@@ -10,6 +10,7 @@ import { WorkspaceTaskModal } from "@/components/workspaces/WorkspaceTaskModal";
 import type { WorkspaceTask, WorkspaceMember } from "@/components/workspaces/types";
 import { usePresence } from "@/components/layout/PresenceProvider";
 import { AvatarStack } from "@/components/projects/AvatarStack";
+import { UserAvatar } from "@/components/ui/UserAvatar";
 
 const TOAST_STYLE = { background: "hsl(var(--b2))", color: "hsl(var(--bc))" };
 const TOAST_ERROR_STYLE = { background: "hsl(var(--b2))", color: "hsl(var(--er))" };

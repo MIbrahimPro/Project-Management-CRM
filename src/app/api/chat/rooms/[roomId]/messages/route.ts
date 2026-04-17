@@ -31,8 +31,8 @@ export const GET = apiHandler(
     if (!roomId) return NextResponse.json({ error: "Missing roomId" }, { status: 400 });
 
     // Verify membership
-    const member = await prisma.chatRoomMember.findUnique({
-      where: { roomId_userId: { roomId, userId } },
+    const member = await prisma.chatRoomMember.findFirst({
+      where: { roomId, userId, room: { deletedAt: null } },
     });
     if (!member) forbidden();
 
@@ -59,6 +59,7 @@ export const GET = apiHandler(
           },
         },
         reactions: true,
+        receipts: true,
       },
       orderBy: { createdAt: "desc" },
       take: PAGE_SIZE + 1,
@@ -89,8 +90,8 @@ export const POST = apiHandler(
     const roomId = ctx?.params.roomId;
     if (!roomId) return NextResponse.json({ error: "Missing roomId" }, { status: 400 });
 
-    const member = await prisma.chatRoomMember.findUnique({
-      where: { roomId_userId: { roomId, userId } },
+    const member = await prisma.chatRoomMember.findFirst({
+      where: { roomId, userId, room: { deletedAt: null } },
       include: {
         room: {
           select: {

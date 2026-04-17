@@ -129,6 +129,7 @@ export default function ProfilePage() {
         .then((d) => setContracts(d.data || []))
         .finally(() => setFetchingContracts(false));
     }
+  }, [profile]);
   async function handleSign(contractId: string) {
     try {
       const res = await fetch(`/api/contracts/${contractId}/sign`, { method: "POST" });

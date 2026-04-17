@@ -148,6 +148,7 @@ export const POST = apiHandler(async (req: NextRequest) => {
             docType: "milestone_doc",
             access: "INTERNAL",
             createdById: userId,
+            initialContent: m.content || null,
           },
         });
       }

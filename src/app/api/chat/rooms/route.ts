@@ -37,6 +37,7 @@ export const GET = apiHandler(async (req: NextRequest) => {
 
   const where = {
     members: { some: { userId } },
+    deletedAt: null,
     ...(projectId ? { projectId } : {}),
     ...(scope === "general" ? { type: { in: GENERAL_ROOM_TYPES } } : {}),
   };

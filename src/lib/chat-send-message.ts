@@ -24,6 +24,8 @@ const MESSAGE_INCLUDE = {
     },
   },
   reactions: true,
+  receipts: true,
+  deliveredAt: true,
 } as const;
 
 export type ChatMessagePayload = {

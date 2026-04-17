@@ -193,10 +193,67 @@ export function setupSocketServer(io: Server) {
 
     // ---- MARK READ ----
     socket.on("mark_read", async (roomId: string) => {
+      const now = new Date();
       await prisma.chatRoomMember.updateMany({
         where: { roomId, userId },
-        data: { lastReadAt: new Date() },
+        data: { lastReadAt: now },
       });
+
+      // Find unread messages to create receipts
+      const unreadMessages = await prisma.message.findMany({
+        where: {
+          roomId,
+          senderId: { not: userId },
+          receipts: { none: { userId } },
+          deletedAt: null,
+        },
+        select: { id: true },
+        take: 50,
+      });
+
+      if (unreadMessages.length > 0) {
+        await prisma.messageReceipt.createMany({
+          data: unreadMessages.map(m => ({
+            messageId: m.id,
+            userId,
+            readAt: now,
+          })),
+          skipDuplicates: true,
+        });
+
+        chatNS.to(`room:${roomId}`).emit("messages_read", {
+          roomId,
+          userId,
+          messageIds: unreadMessages.map(m => m.id),
+          readAt: now,
+        });
+      }
+    });
+    
+    // ---- PIN MESSAGE ----
+    socket.on("pin_message", async ({ messageId, isPinned }: { messageId: string; isPinned: boolean }) => {
+      try {
+        const msg = await prisma.message.findUnique({ where: { id: messageId }, select: { roomId: true } });
+        if (!msg) return;
+
+        const member = await prisma.chatRoomMember.findUnique({
+          where: { roomId_userId: { roomId: msg.roomId, userId } },
+        });
+        
+        const isManager = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(socket.data.role);
+        const isRoomAdmin = member?.isGroupAdmin;
+
+        if (!isManager && !isRoomAdmin) return;
+
+        const updated = await prisma.message.update({
+          where: { id: messageId },
+          data: { pinnedAt: isPinned ? new Date() : null },
+        });
+
+        chatNS.to(`room:${msg.roomId}`).emit("message_pinned", { messageId, isPinned, pinnedAt: updated.pinnedAt });
+      } catch (err) {
+        console.error("[Socket pin_message error]", err);
+      }
     });
 
     // ---- DISCONNECT ----
