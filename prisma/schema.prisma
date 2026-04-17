@@ -85,12 +85,21 @@ enum HiringStatus {
 enum CandidateStatus {
   APPLIED
   UNDER_REVIEW
-  AI_RECOMMENDED
-  HR_RECOMMENDED
   SHORTLISTED
   INTERVIEW_SCHEDULED
   HIRED
   REJECTED
+}
+
+enum QuestionType {
+  TEXT
+  LONG_TEXT
+  NUMBER
+  DATE
+  BOOLEAN
+  FILE
+  URL
+  EMAIL
 }
 
 enum AttendanceStatus {
@@ -157,6 +166,7 @@ model User {
   currencyPreference String    @default("USD")
   clientColor        String    @default("#06b6d4")
   pushSubscription   String?
+  salary             String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -176,10 +186,17 @@ model User {
   questionAnswers       QuestionAnswer[]
   meetingParticipants   MeetingParticipant[]
   chatRoomMemberships   ChatRoomMember[]
+  chatRoomsCreated      ChatRoom[]              @relation("ChatRoomCreator")
   workspaceTaskActivity WorkspaceTask[]          @relation("WorkspaceTaskCreator")
   tasksCreated          Task[]                   @relation("TaskCreator")
   clientProjects        Project[]              @relation("ProjectClient")
   aiConversations       AIConversation[]
+  salaryRequests        SalaryRequest[]          @relation("SalaryRequestUser")
+  salaryRequestsCreated SalaryRequest[]          @relation("SalaryRequestCreator")
+  interviews            Interview[]              @relation("InterviewParticipants")
+  contracts             Contract[]               @relation("UserContracts")
+  uploadedContracts     ContractVersion[]        @relation("ContractUploader")
+  uploadedRecordings    MeetingRecording[]       @relation("RecordingUploader")
 
   @@index([email])
   @@index([role])
@@ -392,7 +409,7 @@ model Document {
   parentId    String?
   parent      Document?      @relation("DocTree", fields: [parentId], references: [id])
   children    Document[]     @relation("DocTree")
-  createdAt   DateTime       @default(now())
+  createdAt        DateTime      @default(now())
   updatedAt   DateTime       @updatedAt
 
   @@index([projectId])
@@ -419,7 +436,12 @@ model ChatRoom {
   workspaceTask    WorkspaceTask?  @relation(fields: [workspaceTaskId], references: [id])
   hiringRequestId  String?
   hiringRequest    HiringRequest?  @relation(fields: [hiringRequestId], references: [id])
-  createdAt        DateTime        @default(now())
+  // Custom group fields (used when type == "custom_group")
+  createdById        String?
+  createdBy          User?    @relation("ChatRoomCreator", fields: [createdById], references: [id])
+  adminsOnlyPosting  Boolean  @default(false)
+  avatarUrl          String?
+  createdAt          DateTime @default(now())
 
   members  ChatRoomMember[]
   messages Message[]
@@ -430,14 +452,17 @@ model ChatRoom {
 }
 
 model ChatRoomMember {
-  id         String    @id @default(cuid())
-  roomId     String
-  room       ChatRoom  @relation(fields: [roomId], references: [id])
-  userId     String
-  user       User      @relation(fields: [userId], references: [id])
-  lastReadAt DateTime?
-  isPinned   Boolean   @default(false)
-  joinedAt   DateTime  @default(now())
+  id            String    @id @default(cuid())
+  roomId        String
+  room          ChatRoom  @relation(fields: [roomId], references: [id])
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  lastReadAt    DateTime?
+  isPinned      Boolean   @default(false)
+  // True for the creator of a custom group + anyone they promote. Lets that user
+  // rename, toggle posting rules, and add/remove members within the group.
+  isGroupAdmin  Boolean   @default(false)
+  joinedAt      DateTime  @default(now())
 
   @@unique([roomId, userId])
   @@index([userId])
@@ -524,13 +549,27 @@ model CheckIn {
   checkedInAt    DateTime
   checkedOutAt   DateTime?
   isAutoCheckout Boolean   @default(false)
+  notified8h     Boolean   @default(false)
   date           DateTime  @db.Date
   createdAt      DateTime  @default(now())
 
   awayPings AwayPing[]
+  pings     AttendancePing[]
 
   @@index([userId, date])
   @@unique([userId, date])
+}
+
+model AttendancePing {
+  id          String    @id @default(cuid())
+  checkInId   String
+  checkIn     CheckIn   @relation(fields: [checkInId], references: [id])
+  senderId    String
+  sentAt      DateTime  @default(now())
+  respondedAt DateTime?
+  status      String    @default("PENDING") // PENDING, RESPONDED, EXPIRED
+  
+  @@index([checkInId])
 }
 
 model AwayPing {
@@ -545,14 +584,15 @@ model AwayPing {
 }
 
 model Attendance {
-  id        String           @id @default(cuid())
-  userId    String
-  user      User             @relation(fields: [userId], references: [id])
-  date      DateTime         @db.Date
-  status    AttendanceStatus
-  note      String?
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
+  id            String           @id @default(cuid())
+  userId        String
+  user          User             @relation(fields: [userId], references: [id])
+  date          DateTime         @db.Date
+  status        AttendanceStatus
+  overtimeHours Float            @default(0)
+  note          String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 
   @@unique([userId, date])
   @@index([date])
@@ -567,18 +607,41 @@ model Meeting {
   id           String    @id @default(cuid())
   projectId    String?
   project      Project?  @relation(fields: [projectId], references: [id])
+  workspaceId  String?
+  workspace    Workspace? @relation(fields: [workspaceId], references: [id])
+  taskId       String?
+  task         Task?      @relation(fields: [taskId], references: [id])
+  interviewId  String?    @unique
+  interview    Interview? @relation(fields: [interviewId], references: [id])
   chatRoomId   String?
   title        String
   jitsiRoomId  String    @unique
   startedAt    DateTime  @default(now())
   endedAt      DateTime?
-  recordingUrl String?
   createdById  String
   createdAt    DateTime  @default(now())
 
   participants MeetingParticipant[]
+  recordings   MeetingRecording[]
 
   @@index([projectId])
+  @@index([workspaceId])
+  @@index([taskId])
+}
+
+model MeetingRecording {
+  id           String   @id @default(cuid())
+  meetingId    String
+  meeting      Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  title        String?
+  storagePath  String
+  sizeBytes    BigInt?
+  durationSec  Int?
+  uploadedById String
+  uploadedBy   User     @relation("RecordingUploader", fields: [uploadedById], references: [id])
+  createdAt    DateTime @default(now())
+
+  @@index([meetingId])
 }
 
 model MeetingParticipant {
@@ -630,8 +693,10 @@ model HiringQuestion {
   requestId String
   request   HiringRequest @relation(fields: [requestId], references: [id])
   text      String
+  type      QuestionType  @default(TEXT)
   required  Boolean       @default(true)
   order     Int
+  appliesToPublicForm Boolean @default(true)
 
   answers CandidateAnswer[]
 
@@ -654,7 +719,8 @@ model Candidate {
   appliedAt       DateTime        @default(now())
   interviewAt     DateTime?
 
-  answers CandidateAnswer[]
+  answers    CandidateAnswer[]
+  interviews Interview[]
 
   @@index([requestId, status])
   @@index([email])
@@ -669,6 +735,22 @@ model CandidateAnswer {
   answer      String         @db.Text
 
   @@index([candidateId])
+}
+
+model SalaryRequest {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation("SalaryRequestUser", fields: [userId], references: [id])
+  requestedById  String
+  requestedBy    User     @relation("SalaryRequestCreator", fields: [requestedById], references: [id])
+  currentSalary  String?
+  proposedSalary String
+  status         String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
 }
 
 // ============================================================
@@ -729,6 +811,7 @@ model Workspace {
   documents       Document[]
   aiContexts      AIContext[]
   aiConversations AIConversation[]
+  meetings        Meeting[]
 
   @@index([createdById])
 }
@@ -794,6 +877,7 @@ model Task {
   project         Project?        @relation(fields: [projectId], references: [id])
   aiContexts      AIContext[]
   aiConversations AIConversation[]
+  meetings        Meeting[]
 
   @@index([status])
   @@index([createdById])
@@ -873,4 +957,61 @@ model AIConversation {
 
   @@unique([userId, projectId, taskId, workspaceId])
   @@index([userId])
+}
+
+// ============================================================
+// HR / INTERVIEWS
+// ============================================================
+
+model Interview {
+  id             String    @id @default(cuid())
+  candidateId    String
+  candidate      Candidate @relation(fields: [candidateId], references: [id])
+  startTime      DateTime
+  endTime        DateTime
+  status         String    @default("SCHEDULED") // SCHEDULED, COMPLETED, CANCELLED
+  roomId         String?
+  
+  notified30m    Boolean   @default(false)
+  notified10m    Boolean   @default(false)
+  
+  interviewers   User[]    @relation("InterviewParticipants")
+  meeting        Meeting?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([candidateId])
+  @@index([startTime])
+}
+
+// ============================================================
+// CONTRACTS
+// ============================================================
+
+model Contract {
+  id             String            @id @default(cuid())
+  userId         String            @unique
+  user           User              @relation("UserContracts", fields: [userId], references: [id])
+  title          String
+  currentVersion Int               @default(1)
+  status         String            @default("PENDING") // PENDING, SIGNED, ARCHIVED
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  versions       ContractVersion[]
+
+  @@index([userId])
+}
+
+model ContractVersion {
+  id            String   @id @default(cuid())
+  contractId    String
+  contract      Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  version       Int
+  storagePath   String
+  uploadedById  String
+  uploadedBy    User     @relation("ContractUploader", fields: [uploadedById], references: [id])
+  createdAt     DateTime @default(now())
+
+  @@index([contractId])
 }

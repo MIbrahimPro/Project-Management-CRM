@@ -46,7 +46,7 @@ export const GET = apiHandler(async (req: NextRequest, ctx) => {
       createdAt: true,
       requestedBy: { select: { id: true, name: true } },
       hr: { select: { id: true, name: true } },
-      questions: { orderBy: { order: "asc" }, select: { id: true, text: true, required: true, order: true } },
+      questions: { orderBy: { order: "asc" }, select: { id: true, text: true, type: true, appliesToPublicForm: true, required: true, order: true } },
       candidates: {
         orderBy: { appliedAt: "desc" },
         select: {
@@ -67,6 +67,10 @@ export const GET = apiHandler(async (req: NextRequest, ctx) => {
               question: { select: { text: true } },
             },
           },
+          interviews: {
+            orderBy: { startTime: "asc" },
+            select: { id: true, startTime: true, endTime: true, roomId: true, status: true }
+          }
         },
       },
     },
@@ -108,6 +112,19 @@ export const PATCH = apiHandler(async (req: NextRequest, ctx) => {
     updateData.status = "OPEN";
     if (!existing.publicSlug) {
       updateData.publicSlug = `${nanoid(10)}`;
+    }
+  } else if (existing.status === "OPEN" && body.status !== "OPEN") {
+    // If unpublishing (changing status away from OPEN), revert to DRAFT unless explicitly closing/cancelling
+    if (!body.status || body.status === "PENDING_APPROVAL") {
+      updateData.status = "DRAFT";
+    }
+  }
+
+  // Lock edits for published requests (except status changes)
+  if (existing.status === "OPEN" && !body.publish) {
+    const attemptedEdits = Object.keys(updateData).filter(k => k !== "status");
+    if (attemptedEdits.length > 0 && updateData.status === undefined) {
+      return NextResponse.json({ error: "Published requests are read-only. Unpublish first to edit.", code: "LOCKED" }, { status: 400 });
     }
   }
 

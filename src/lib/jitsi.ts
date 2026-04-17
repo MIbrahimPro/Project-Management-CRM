@@ -83,6 +83,12 @@ function shouldUseJwt(domain: string): boolean {
   return !isPublicJitsi && Boolean(JITSI_APP_SECRET);
 }
 
+// Jitsi JWT lifetime — long enough for all-day meetings and to tolerate
+// page-open times > the old 4h limit. Bound to a single room so extending
+// this is safe (token is useless outside the specified room).
+const JITSI_TOKEN_LIFETIME_SECONDS = 60 * 60 * 12; // 12 hours
+const JITSI_CLOCK_SKEW_SECONDS = 60; // tolerate ±60s between server and Prosody
+
 export function generateJitsiToken(roomName: string, user: JitsiUser): string | null {
   const { domain } = getJitsiConfig();
   if (!shouldUseJwt(domain)) return null;
@@ -105,8 +111,11 @@ export function generateJitsiToken(roomName: string, user: JitsiUser): string | 
     iss: JITSI_APP_ID,
     sub: domain,
     room: roomName,
-    iat: now,
-    exp: now + 60 * 60 * 4, // 4 hours
+    // Set `iat`/`nbf` slightly in the past so clock skew between the Next.js
+    // server and the Prosody/Jitsi host doesn't trip the `nbf` check.
+    iat: now - JITSI_CLOCK_SKEW_SECONDS,
+    nbf: now - JITSI_CLOCK_SKEW_SECONDS,
+    exp: now + JITSI_TOKEN_LIFETIME_SECONDS,
   };
 
   return jwt.sign(payload, JITSI_APP_SECRET, { algorithm: "HS256" });

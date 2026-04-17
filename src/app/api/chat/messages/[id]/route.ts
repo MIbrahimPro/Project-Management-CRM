@@ -1,0 +1,43 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { apiHandler, forbidden, notFound } from "@/lib/api-handler";
+import type { Server as SocketIOServer } from "socket.io";
+
+export const dynamic = "force-dynamic";
+
+export const DELETE = apiHandler(async (req: NextRequest, { params }: { params: { id: string } }) => {
+  const userId = req.headers.get("x-user-id") ?? forbidden();
+  const userRole = req.headers.get("x-user-role") ?? "";
+
+  const message = await prisma.message.findUnique({
+    where: { id: params.id },
+    select: { senderId: true, roomId: true },
+  });
+
+  if (!message) return notFound("Message not found");
+
+  // Only sender or Super Admin can delete for everyone
+  const isOwner = message.senderId === userId;
+  const isSuperAdmin = userRole === "SUPER_ADMIN";
+
+  if (!isOwner && !isSuperAdmin) {
+    return forbidden("You can only delete your own messages");
+  }
+
+  await prisma.message.update({
+    where: { id: params.id },
+    data: {
+      deletedAt: new Date(),
+      deletedContent: null, // Optional: if we want to clear content completely
+    },
+  });
+
+  // Emit to socket
+  const io = (globalThis as unknown as { io?: SocketIOServer }).io;
+  io?.of("/chat").to(`room:${message.roomId}`).emit("message_deleted", {
+    messageId: params.id,
+    roomId: message.roomId,
+  });
+
+  return NextResponse.json({ data: { success: true } });
+});

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Briefcase, CheckCircle, Clock, RefreshCw, ThumbsDown, ThumbsUp, XCircle } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -35,25 +34,9 @@ function ApprovalChip({ label, approved }: { label: string; approved: boolean })
 }
 
 export default function AdminHiringPage() {
-  const router = useRouter();
   const [requests, setRequests] = useState<HiringRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [approving, setApproving] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    void fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((d: { data?: { role: string } }) => {
-        if (cancelled) return;
-        if (d.data?.role === "PROJECT_MANAGER") {
-          router.replace("/admin/users");
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
 
   function load() {
     setLoading(true);

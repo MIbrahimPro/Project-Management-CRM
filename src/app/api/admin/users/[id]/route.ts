@@ -2,11 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
-import {
-  projectManagerCannotAssignPrivilegedRole,
-  projectManagerCannotModifyUser,
-  requireUserManagement,
-} from "@/lib/admin-user-management";
+import { requireUserManagement } from "@/lib/admin-user-management";
 
 export const dynamic = "force-dynamic";
 
@@ -46,21 +42,16 @@ export async function PATCH(
     return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
   }
 
-  if (projectManagerCannotModifyUser(actorRole, user.role)) {
-    return NextResponse.json(
-      { error: "Cannot modify administrator accounts", code: "FORBIDDEN" },
-      { status: 403 }
-    );
-  }
-
   const body = patchSchema.parse(await req.json());
 
-  if (projectManagerCannotAssignPrivilegedRole(actorRole, body.role)) {
+  // Only SUPER_ADMIN can assign SUPER_ADMIN role
+  if (body.role === "SUPER_ADMIN" && actorRole !== "SUPER_ADMIN") {
     return NextResponse.json(
-      { error: "Cannot assign administrator role", code: "FORBIDDEN" },
+      { error: "Cannot assign SUPER_ADMIN role", code: "FORBIDDEN" },
       { status: 403 }
     );
   }
+
   const updated = await prisma.user.update({
     where: { id: params.id },
     data: body,

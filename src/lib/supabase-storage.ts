@@ -15,7 +15,8 @@ export type StoragePath =
   | `photos/${string}`
   | `receipts/${string}`
   | `recordings/${string}`
-  | `workspace-task-media/${string}`;
+  | `workspace-task-media/${string}`
+  | `contracts/${string}`;
 
 export async function uploadFile(
   buffer: Buffer,

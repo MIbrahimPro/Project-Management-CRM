@@ -15,11 +15,27 @@ export const POST = apiHandler(async (req: NextRequest) => {
     return NextResponse.json({ error: "Cannot DM yourself" }, { status: 400 });
   }
 
+  const viewerRole = req.headers.get("x-user-role") ?? "";
+  const canChatWithClients = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(viewerRole);
+
+  const targetUser = await prisma.user.findUnique({
+    where: { id: targetUserId },
+    select: { role: true },
+  });
+
+  if (targetUser?.role === "CLIENT" && !canChatWithClients) {
+    return NextResponse.json({ error: "Only managers and admins can DM clients" }, { status: 403 });
+  }
+
   // Find existing general_dm room between these two users
   const existing = await prisma.chatRoom.findFirst({
     where: {
       type: "general_dm",
-      members: { every: { userId: { in: [userId, targetUserId] } } },
+      AND: [
+        { members: { some: { userId } } },
+        { members: { some: { userId: targetUserId } } },
+        { members: { every: { userId: { in: [userId, targetUserId] } } } }
+      ],
     },
     include: {
       members: {
@@ -37,6 +53,7 @@ export const POST = apiHandler(async (req: NextRequest) => {
   });
 
   // Confirm it has exactly these two members (not a group with more)
+  // If multiple exist (bug), return the first one found to avoid creating more
   if (existing && existing.members.length === 2) {
     return NextResponse.json({ data: { ...existing, unreadCount: 0 } });
   }

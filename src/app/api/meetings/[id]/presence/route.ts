@@ -19,6 +19,22 @@ async function assertMeetingAccess(meetingId: string, userId: string, userRole: 
           members: { select: { userId: true } },
         },
       },
+      workspace: {
+        select: {
+          members: { select: { userId: true } },
+        },
+      },
+      task: {
+        select: {
+          assignees: { select: { userId: true } },
+          createdById: true,
+        },
+      },
+      interview: {
+        select: {
+          interviewers: { select: { id: true } },
+        },
+      },
     },
   });
 
@@ -31,10 +47,22 @@ async function assertMeetingAccess(meetingId: string, userId: string, userRole: 
   }
 
   const isManager = MANAGER_ROLES.includes(userRole);
-  if (!isManager && meeting.project) {
+  if (isManager) return null;
+
+  if (meeting.project) {
     const isMember = meeting.project.members.some((m) => m.userId === userId);
     const isClient = userRole === "CLIENT" && meeting.project.clientId === userId;
     if (!isMember && !isClient) forbidden();
+  } else if (meeting.workspace) {
+    const isMember = meeting.workspace.members.some((m) => m.userId === userId);
+    if (!isMember) forbidden();
+  } else if (meeting.task) {
+    const isAssignee = meeting.task.assignees.some((m) => m.userId === userId);
+    const isCreator = meeting.task.createdById === userId;
+    if (!isAssignee && !isCreator) forbidden();
+  } else if (meeting.interview) {
+    const isInterviewer = meeting.interview.interviewers.some((u) => u.id === userId);
+    if (!isInterviewer) forbidden();
   }
 
   return null;

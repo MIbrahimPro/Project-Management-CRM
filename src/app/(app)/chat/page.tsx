@@ -1,11 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ChevronLeft, Search, Video, X } from "lucide-react";
+import { ChevronLeft, Search, Video, X, Plus } from "lucide-react";
 import { ChatRoom } from "@/components/chat/ChatRoom";
 import { ResizablePanel } from "@/components/ui/ResizablePanel";
+import { UserAvatar } from "@/components/ui/UserAvatar";
+import { AvatarStack } from "@/components/projects/AvatarStack";
 import { useSocket } from "@/hooks/useSocket";
 import toast from "react-hot-toast";
+
+import { usePresence } from "@/components/layout/PresenceProvider";
 
 const TOAST_STYLE = { background: "hsl(var(--b2))", color: "hsl(var(--bc))" };
 const TOAST_ERROR_STYLE = { background: "hsl(var(--b2))", color: "hsl(var(--er))" };
@@ -16,8 +20,11 @@ type Room = {
   name: string | null;
   type: string;
   unreadCount: number;
-  members: { userId: string; user: ChatUser }[];
+  members: { userId: string; user: ChatUser; isGroupAdmin?: boolean }[];
   messages: { content: string | null; createdAt: string; mediaType: string | null }[];
+  adminsOnlyPosting?: boolean;
+  avatarUrl?: string | null;
+  createdById?: string;
 };
 type SearchUser = { id: string; name: string; role: string; profilePicUrl: string | null };
 
@@ -33,6 +40,7 @@ interface SidebarEntry {
   lastMessagePreview: string;
   lastMessageTime: string;
   isGroup: boolean;
+  avatarUrl?: string | null;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -58,8 +66,16 @@ export default function GeneralChatPage() {
   const [filterQuery, setFilterQuery] = useState("");
   const [startingMeeting, setStartingMeeting] = useState(false);
   const [chatRefreshTick, setChatRefreshTick] = useState(0);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupMembers, setNewGroupMembers] = useState<string[]>([]);
+  const [newGroupAdminsOnly, setNewGroupAdminsOnly] = useState(false);
+  const [newGroupAvatarUrl, setNewGroupAvatarUrl] = useState<string | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [creatingGroup, setCreatingGroup] = useState(false);
 
   const { socket, connected } = useSocket("/chat");
+  const presenceMap = usePresence();
 
   useEffect(() => {
     Promise.all([
@@ -91,7 +107,13 @@ export default function GeneralChatPage() {
     function onNewMessage(msg: { roomId: string; content: string | null; mediaType: string | null; createdAt: string; senderId: string }) {
       setRooms((prev) => {
         const existing = prev.find((r) => r.id === msg.roomId);
-        if (!existing) return prev;
+        if (!existing) {
+          // New room created by someone else (DM or Group) -> Refresh list
+          fetch("/api/chat/rooms?scope=general")
+            .then(r => r.json())
+            .then(d => { if(d.data) setRooms(d.data); });
+          return prev;
+        }
         const isCurrentRoom = msg.roomId === activeRoomId;
         return prev.map((r) =>
           r.id === msg.roomId
@@ -168,6 +190,7 @@ export default function GeneralChatPage() {
 
   function getRoomDisplayName(room: Room): string {
     if (room.type === "general_group") return room.name ?? "All Hands";
+    if (room.type === "custom_group") return room.name ?? "Group Chat";
     if (room.type === "general_dm") {
       const other = room.members.find((m) => m.userId !== user?.id);
       return other?.user.name ?? "Direct Message";
@@ -184,13 +207,14 @@ export default function GeneralChatPage() {
 
     // Groups first
     for (const room of rooms) {
-      if (room.type === "general_group") {
+      if (room.type === "general_group" || room.type === "custom_group") {
         entries.push({
           kind: "room", id: room.id,
           displayName: getRoomDisplayName(room),
           initial: (room.name ?? "A")[0].toUpperCase(),
-          colorClass: "bg-primary/20 text-primary",
+          colorClass: room.type === "general_group" ? "bg-primary/20 text-primary" : "bg-secondary/20 text-secondary",
           room, unreadCount: room.unreadCount, isGroup: true,
+          avatarUrl: room.avatarUrl,
           lastMessagePreview: room.messages[0]?.content ?? room.messages[0]?.mediaType ?? "",
           lastMessageTime: room.messages[0]?.createdAt ?? "",
         });
@@ -201,14 +225,25 @@ export default function GeneralChatPage() {
     for (const room of rooms) {
       if (room.type === "general_dm") {
         const other = room.members.find((m) => m.userId !== user.id);
-        if (other) usersWithRooms.add(other.userId);
+        if (!other) continue;
+        
+        // Hide client DMs from non-managers (in case old rooms exist)
+        if (other.user.role === "CLIENT" && !MANAGER_ROLES.includes(user.role)) {
+          continue;
+        }
+
+        // DEDUPLICATION: If we already have a DM room for this user, skip duplicates
+        if (usersWithRooms.has(other.userId)) continue;
+        usersWithRooms.add(other.userId);
+
         entries.push({
           kind: "room", id: room.id,
-          displayName: other?.user.name ?? "DM",
-          initial: (other?.user.name ?? "?")[0].toUpperCase(),
+          displayName: other.user.name,
+          initial: other.user.name[0].toUpperCase(),
           colorClass: "bg-base-300 text-base-content/60",
-          room, targetUser: other?.user ? { id: other.user.id, name: other.user.name, role: other.user.role, profilePicUrl: other.user.profilePicUrl } : undefined,
+          room, targetUser: { id: other.user.id, name: other.user.name, role: other.user.role, profilePicUrl: other.user.profilePicUrl },
           unreadCount: room.unreadCount, isGroup: false,
+          avatarUrl: other.user.profilePicUrl,
           lastMessagePreview: room.messages[0]?.content ?? room.messages[0]?.mediaType ?? "",
           lastMessageTime: room.messages[0]?.createdAt ?? "",
         });
@@ -224,6 +259,7 @@ export default function GeneralChatPage() {
         initial: u.name[0]?.toUpperCase() ?? "?",
         colorClass: "bg-base-300 text-base-content/60",
         targetUser: u, unreadCount: 0, isGroup: false,
+        avatarUrl: u.profilePicUrl,
         lastMessagePreview: ROLE_LABELS[u.role] ?? u.role,
         lastMessageTime: "",
       });
@@ -233,10 +269,13 @@ export default function GeneralChatPage() {
   }
 
   const allEntries = buildEntries();
+  // Final deduplication by ID just in case
+  const uniqueEntries = Array.from(new Map(allEntries.map(e => [e.id, e])).values());
+
   const query = filterQuery.toLowerCase();
   const filteredEntries = query
-    ? allEntries.filter((e) => e.displayName.toLowerCase().includes(query))
-    : allEntries;
+    ? uniqueEntries.filter((e) => e.displayName.toLowerCase().includes(query))
+    : uniqueEntries;
 
   // Sort: groups first, then by last message time (rooms with messages first), then alphabetical
   const sortedEntries = [...filteredEntries].sort((a, b) => {
@@ -251,8 +290,9 @@ export default function GeneralChatPage() {
   });
 
   // Find the active entry for display
-  const activeEntry = allEntries.find((e) => e.kind === "room" && e.room?.id === activeRoomId);
+  const activeEntry = uniqueEntries.find((e) => e.kind === "room" && e.room?.id === activeRoomId);
   const isManager = user ? MANAGER_ROLES.includes(user.role) : false;
+  const canStartMeeting = user ? user.role !== "CLIENT" : false;
 
   if (loading) {
     return (
@@ -263,6 +303,43 @@ export default function GeneralChatPage() {
   }
 
   if (!user) return null;
+
+  async function handleCreateGroup() {
+    if (!newGroupName.trim() || newGroupMembers.length === 0) {
+      toast.error("Please enter a name and select at least one member", { style: TOAST_ERROR_STYLE });
+      return;
+    }
+    setCreatingGroup(true);
+    try {
+      const res = await fetch("/api/chat/rooms/custom-group", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newGroupName,
+          userIds: newGroupMembers,
+          adminsOnlyPosting: newGroupAdminsOnly,
+          avatarUrl: newGroupAvatarUrl,
+        }),
+      });
+      const data = (await res.json()) as { data?: Room; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed to create group");
+      
+      const newRoom = { ...data.data!, unreadCount: 0, messages: [] };
+      setRooms((prev) => [newRoom, ...prev]);
+      setActiveRoomId(newRoom.id);
+      setMobileShowList(false);
+      setShowCreateGroup(false);
+      setNewGroupName("");
+      setNewGroupMembers([]);
+      setNewGroupAdminsOnly(false);
+      setNewGroupAvatarUrl(null);
+      toast.success("Group created", { style: TOAST_STYLE });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed", { style: TOAST_ERROR_STYLE });
+    } finally {
+      setCreatingGroup(false);
+    }
+  }
 
   return (
     <>
@@ -278,15 +355,26 @@ export default function GeneralChatPage() {
         }`}
       >
         <div className="p-3 border-b border-base-300">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-base-content/40" />
-            <input
-              type="text"
-              className="input input-bordered input-sm bg-base-100 w-full pl-9"
-              placeholder="Search..."
-              value={filterQuery}
-              onChange={(e) => setFilterQuery(e.target.value)}
-            />
+          <div className="flex items-center gap-2 mb-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-base-content/40" />
+              <input
+                type="text"
+                className="input input-bordered input-sm bg-base-100 w-full pl-9"
+                placeholder="Search..."
+                value={filterQuery}
+                onChange={(e) => setFilterQuery(e.target.value)}
+              />
+            </div>
+            {isManager && (
+              <button
+                className="btn btn-sm btn-circle btn-ghost"
+                onClick={() => setShowCreateGroup(true)}
+                title="Create Group"
+              >
+                <Plus className="w-4 h-4 text-primary" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -305,10 +393,20 @@ export default function GeneralChatPage() {
                 }
               }}
             >
-              <div
-                className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-semibold ${entry.colorClass}`}
-              >
-                {entry.initial}
+              <div className="flex-shrink-0">
+                {entry.isGroup && entry.room && !entry.avatarUrl ? (
+                  <AvatarStack 
+                    users={entry.room.members.slice(0, 3).map(m => m.user)} 
+                    overflow={Math.max(0, entry.room.members.length - 3)} 
+                  />
+                ) : (
+                  <UserAvatar 
+                    user={entry.targetUser ? { name: entry.targetUser.name, profilePicUrl: entry.targetUser.profilePicUrl } : { name: entry.displayName, profilePicUrl: entry.avatarUrl }} 
+                    size={32} 
+                    showPresence={!entry.isGroup}
+                    isOnline={entry.targetUser ? presenceMap[entry.targetUser.id] === "online" : false}
+                  />
+                )}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-1">
@@ -319,10 +417,19 @@ export default function GeneralChatPage() {
                     <span className="badge badge-primary badge-xs">{entry.unreadCount}</span>
                   )}
                 </div>
-                {entry.lastMessagePreview && (
+                {entry.lastMessagePreview ? (
                   <p className="text-xs text-base-content/50 truncate mt-0.5">
                     {entry.lastMessagePreview}
                   </p>
+                ) : (
+                  entry.isGroup && entry.room && (
+                    <p className="text-xs text-base-content/50 truncate mt-0.5">
+                      {entry.room.members.length} members 
+                      <span className="text-success ml-1">
+                        ({entry.room.members.filter(m => presenceMap[m.userId] === "online").length} online)
+                      </span>
+                    </p>
+                  )
                 )}
               </div>
             </button>
@@ -356,9 +463,10 @@ export default function GeneralChatPage() {
             roomName={activeEntry.displayName}
             currentUser={user}
             showSenderInfo={activeEntry.isGroup}
-            showMeetingButton={isManager}
-            onStartMeeting={isManager ? handleStartMeeting : undefined}
+            showMeetingButton={canStartMeeting}
+            onStartMeeting={canStartMeeting ? handleStartMeeting : undefined}
             refreshTrigger={chatRefreshTick}
+            roomDetails={activeEntry.room}
           />
         </div>
       ) : (
@@ -367,6 +475,118 @@ export default function GeneralChatPage() {
         </div>
       )}
       </div>
+
+      {showCreateGroup && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-base-100 rounded-xl max-w-md w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-4 border-b border-base-300 flex items-center justify-between">
+              <h3 className="font-semibold text-lg">Create Group</h3>
+              <button className="btn btn-ghost btn-sm btn-circle" onClick={() => setShowCreateGroup(false)}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 space-y-4">
+              <div className="flex items-center gap-4">
+                <UserAvatar user={{ name: newGroupName || "New Group", profilePicUrl: newGroupAvatarUrl }} size={64} />
+                <div className="flex-1">
+                  <label className="btn btn-sm btn-outline">
+                    {uploadingAvatar ? <span className="loading loading-spinner loading-xs" /> : "Upload Image"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setUploadingAvatar(true);
+                        const formData = new FormData();
+                        formData.append("file", file);
+                        formData.append("type", "image");
+                        try {
+                          const res = await fetch("/api/chat/upload", { method: "POST", body: formData });
+                          const data = await res.json();
+                          if (res.ok && data.data?.path) setNewGroupAvatarUrl(data.data.path);
+                          else throw new Error(data.error || "Upload failed");
+                        } catch (err) {
+                          toast.error(err instanceof Error ? err.message : "Upload failed");
+                        } finally {
+                          setUploadingAvatar(false);
+                        }
+                      }}
+                    />
+                  </label>
+                  {newGroupAvatarUrl && (
+                    <button className="btn btn-sm btn-ghost text-error ml-2" onClick={() => setNewGroupAvatarUrl(null)}>
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="form-control">
+                <label className="label text-xs font-semibold">Group Name</label>
+                <input
+                  type="text"
+                  className="input input-bordered"
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  placeholder="e.g. Marketing Team"
+                  autoFocus
+                />
+              </div>
+
+              <div className="form-control">
+                <label className="label text-xs font-semibold">Members</label>
+                <div className="border border-base-300 rounded-lg overflow-hidden max-h-48 overflow-y-auto">
+                  {allUsers.filter(u => u.id !== user.id && u.role !== "CLIENT" && u.role !== "SUPER_ADMIN").map(u => (
+                    <label key={u.id} className="flex items-center gap-3 p-2 hover:bg-base-200 cursor-pointer border-b border-base-300 last:border-0">
+                      <input
+                        type="checkbox"
+                        className="checkbox checkbox-sm"
+                        checked={newGroupMembers.includes(u.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) setNewGroupMembers(prev => [...prev, u.id]);
+                          else setNewGroupMembers(prev => prev.filter(id => id !== u.id));
+                        }}
+                      />
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium">{u.name}</span>
+                        <span className="text-xs text-base-content/60">{ROLE_LABELS[u.role] ?? u.role}</span>
+                      </div>
+                    </label>
+                  ))}
+                  {allUsers.filter(u => u.id !== user.id && u.role !== "CLIENT" && u.role !== "SUPER_ADMIN").length === 0 && (
+                    <div className="p-3 text-sm text-center text-base-content/40">No other users available</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="form-control flex-row items-center justify-between p-3 border border-base-300 rounded-lg">
+                <div>
+                  <span className="label-text font-semibold block">Only Admins Can Post</span>
+                  <span className="text-xs text-base-content/60">Restrict posting to group admins only</span>
+                </div>
+                <input
+                  type="checkbox"
+                  className="toggle toggle-primary"
+                  checked={newGroupAdminsOnly}
+                  onChange={(e) => setNewGroupAdminsOnly(e.target.checked)}
+                />
+              </div>
+            </div>
+            <div className="p-4 border-t border-base-300 bg-base-200/50 flex justify-end gap-2">
+              <button className="btn btn-ghost" onClick={() => setShowCreateGroup(false)}>Cancel</button>
+              <button
+                className="btn btn-primary"
+                onClick={handleCreateGroup}
+                disabled={creatingGroup || !newGroupName.trim() || newGroupMembers.length === 0}
+              >
+                {creatingGroup ? <span className="loading loading-spinner loading-sm" /> : "Create Group"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

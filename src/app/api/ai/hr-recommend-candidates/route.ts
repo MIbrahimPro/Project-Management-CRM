@@ -93,7 +93,7 @@ Return ONLY a JSON array of objects with these exact fields:
   if (topIds.length > 0) {
     await prisma.candidate.updateMany({
       where: { id: { in: topIds }, requestId },
-      data: { isAiRecommended: true, status: "AI_RECOMMENDED" },
+      data: { isAiRecommended: true },
     });
   }
 

@@ -34,14 +34,14 @@ export function getSidebarItems(role: string): SidebarItem[] {
 }
 
 /**
- * Admin area sub-nav. Project managers see Users only; hiring approvals stay Super Admin + Admin.
+ * Admin area sub-nav. Manager has full admin parity — only SUPER_ADMIN is uniquely privileged.
  */
 export function getAdminSidebarItems(viewerRole: string): SidebarItem[] {
   const base: SidebarItem[] = [
     { label: "Back", href: "/dashboard", icon: "ArrowLeft", isBackButton: true },
     { label: "Users", href: "/admin/users", icon: "Users" },
   ];
-  if (viewerRole === "SUPER_ADMIN" || viewerRole === "ADMIN") {
+  if (["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(viewerRole)) {
     base.push({ label: "Hiring Approvals", href: "/admin/hiring", icon: "Briefcase" });
   }
   return base;
@@ -51,9 +51,19 @@ export function getProjectSidebarItems(projectId: string): SidebarItem[] {
   return [
     { label: "Back to Projects", href: "/projects",                          icon: "ArrowLeft", isBackButton: true },
     { label: "Dashboard",         href: `/projects/${projectId}`,              icon: "LayoutDashboard" },
+    { label: "AI Chat",           href: `/projects/${projectId}/ai`,           icon: "Sparkles" },
     { label: "Chat",              href: `/projects/${projectId}/chat`,         icon: "MessageSquare" },
     { label: "Questions",         href: `/projects/${projectId}/questions`,    icon: "MessageCircleQuestion", badgeKey: "questionsUnanswered" },
     { label: "Documents",         href: `/projects/${projectId}/documents`,    icon: "FileText" },
     { label: "Vault",             href: `/projects/${projectId}/vault`,        icon: "KeyRound" },
+  ];
+}
+
+export function getHrSidebarItems(): SidebarItem[] {
+  return [
+    { label: "Back", href: "/dashboard", icon: "ArrowLeft", isBackButton: true },
+    { label: "Hiring", href: "/hr", icon: "Briefcase" },
+    { label: "Employee Management", href: "/hr/employees", icon: "Users" },
+    { label: "Contracts", href: "/hr/contracts", icon: "FileText" },
   ];
 }

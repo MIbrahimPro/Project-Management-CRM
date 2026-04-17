@@ -16,14 +16,14 @@ const ROLES = [
 ] as const;
 const WORK_MODES = ["REMOTE", "ONSITE", "HYBRID"] as const;
 
-function pmCannotManageUser(viewerRole: string | null, targetRole: string): boolean {
-  return viewerRole === "PROJECT_MANAGER" && (targetRole === "SUPER_ADMIN" || targetRole === "ADMIN");
+function cannotManageTarget(viewerRole: string | null, targetRole: string): boolean {
+  // Only SUPER_ADMIN can manage SUPER_ADMIN accounts. Manager/Admin have full parity otherwise.
+  return viewerRole !== "SUPER_ADMIN" && targetRole === "SUPER_ADMIN";
 }
 
 function assignableRolesForViewer(viewerRole: string | null): readonly string[] {
-  if (viewerRole === "PROJECT_MANAGER") {
-    return ROLES.filter((r) => r !== "ADMIN");
-  }
+  // ROLES does not include SUPER_ADMIN, so anyone with user-management access can pick from this list.
+  void viewerRole;
   return ROLES;
 }
 
@@ -116,8 +116,8 @@ export default function AdminUsersPage() {
   }
 
   function openEdit(u: User) {
-    if (pmCannotManageUser(viewerRole, u.role)) {
-      toast.error("Only administrators can change administrator accounts", { style: TOAST_ERROR_STYLE });
+    if (cannotManageTarget(viewerRole, u.role)) {
+      toast.error("Only SUPER_ADMIN can modify SUPER_ADMIN accounts", { style: TOAST_ERROR_STYLE });
       return;
     }
     setEditName(u.name);
@@ -157,8 +157,8 @@ export default function AdminUsersPage() {
   }
 
   async function toggleActive(u: User) {
-    if (pmCannotManageUser(viewerRole, u.role)) {
-      toast.error("Only administrators can change administrator accounts", { style: TOAST_ERROR_STYLE });
+    if (cannotManageTarget(viewerRole, u.role)) {
+      toast.error("Only SUPER_ADMIN can modify SUPER_ADMIN accounts", { style: TOAST_ERROR_STYLE });
       return;
     }
     try {
@@ -178,8 +178,8 @@ export default function AdminUsersPage() {
   }
 
   async function sendPasswordReset(userId: string, userName: string, targetRole: string) {
-    if (pmCannotManageUser(viewerRole, targetRole)) {
-      toast.error("Only administrators can change administrator accounts", { style: TOAST_ERROR_STYLE });
+    if (cannotManageTarget(viewerRole, targetRole)) {
+      toast.error("Only SUPER_ADMIN can modify SUPER_ADMIN accounts", { style: TOAST_ERROR_STYLE });
       return;
     }
     try {
@@ -192,8 +192,8 @@ export default function AdminUsersPage() {
   }
 
   async function killSession(userId: string, sessionId: string, targetRole: string) {
-    if (pmCannotManageUser(viewerRole, targetRole)) {
-      toast.error("Only administrators can change administrator accounts", { style: TOAST_ERROR_STYLE });
+    if (cannotManageTarget(viewerRole, targetRole)) {
+      toast.error("Only SUPER_ADMIN can modify SUPER_ADMIN accounts", { style: TOAST_ERROR_STYLE });
       return;
     }
     try {
@@ -213,8 +213,8 @@ export default function AdminUsersPage() {
   }
 
   async function killAllSessions(userId: string, targetRole: string) {
-    if (pmCannotManageUser(viewerRole, targetRole)) {
-      toast.error("Only administrators can change administrator accounts", { style: TOAST_ERROR_STYLE });
+    if (cannotManageTarget(viewerRole, targetRole)) {
+      toast.error("Only SUPER_ADMIN can modify SUPER_ADMIN accounts", { style: TOAST_ERROR_STYLE });
       return;
     }
     try {
@@ -364,8 +364,8 @@ export default function AdminUsersPage() {
                 <button
                   type="button"
                   className="btn btn-ghost btn-sm gap-1"
-                  disabled={pmCannotManageUser(viewerRole, selected.role)}
-                  title={pmCannotManageUser(viewerRole, selected.role) ? "Administrator accounts can only be changed by admins" : undefined}
+                  disabled={cannotManageTarget(viewerRole, selected.role)}
+                  title={cannotManageTarget(viewerRole, selected.role) ? "SUPER_ADMIN accounts can only be changed by SUPER_ADMIN" : undefined}
                   onClick={() => openEdit(selected)}
                 >
                   Edit
@@ -373,8 +373,8 @@ export default function AdminUsersPage() {
                 <button
                   type="button"
                   className="btn btn-ghost btn-sm gap-1"
-                  disabled={pmCannotManageUser(viewerRole, selected.role)}
-                  title={pmCannotManageUser(viewerRole, selected.role) ? "Administrator accounts can only be changed by admins" : undefined}
+                  disabled={cannotManageTarget(viewerRole, selected.role)}
+                  title={cannotManageTarget(viewerRole, selected.role) ? "SUPER_ADMIN accounts can only be changed by SUPER_ADMIN" : undefined}
                   onClick={() => void sendPasswordReset(selected.id, selected.name, selected.role)}
                 >
                   <Key className="w-3.5 h-3.5" /> Reset Password
@@ -382,8 +382,8 @@ export default function AdminUsersPage() {
                 <button
                   type="button"
                   className={`btn btn-sm gap-1 ${selected.isActive ? "btn-error" : "btn-success"}`}
-                  disabled={pmCannotManageUser(viewerRole, selected.role)}
-                  title={pmCannotManageUser(viewerRole, selected.role) ? "Administrator accounts can only be changed by admins" : undefined}
+                  disabled={cannotManageTarget(viewerRole, selected.role)}
+                  title={cannotManageTarget(viewerRole, selected.role) ? "SUPER_ADMIN accounts can only be changed by SUPER_ADMIN" : undefined}
                   onClick={() => void toggleActive(selected)}
                 >
                   {selected.isActive ? (
@@ -427,8 +427,8 @@ export default function AdminUsersPage() {
                   <button
                     type="button"
                     className="btn btn-error btn-xs gap-1"
-                    disabled={pmCannotManageUser(viewerRole, selected.role)}
-                    title={pmCannotManageUser(viewerRole, selected.role) ? "Administrator accounts can only be changed by admins" : undefined}
+                    disabled={cannotManageTarget(viewerRole, selected.role)}
+                    title={cannotManageTarget(viewerRole, selected.role) ? "SUPER_ADMIN accounts can only be changed by SUPER_ADMIN" : undefined}
                     onClick={() => void killAllSessions(selected.id, selected.role)}
                   >
                     <Trash2 className="w-3 h-3" /> Kill All
@@ -450,8 +450,8 @@ export default function AdminUsersPage() {
                       <button
                         type="button"
                         className="btn btn-ghost btn-xs text-error"
-                        disabled={pmCannotManageUser(viewerRole, selected.role)}
-                        title={pmCannotManageUser(viewerRole, selected.role) ? "Administrator accounts can only be changed by admins" : undefined}
+                        disabled={cannotManageTarget(viewerRole, selected.role)}
+                        title={cannotManageTarget(viewerRole, selected.role) ? "SUPER_ADMIN accounts can only be changed by SUPER_ADMIN" : undefined}
                         onClick={() => void killSession(selected.id, s.id, selected.role)}
                       >
                         <Trash2 className="w-3 h-3" />

@@ -1,6 +1,6 @@
 import type { Server as SocketIOServer } from "socket.io";
-import { prisma } from "@/lib/prisma";
-import { sendNotification } from "@/lib/notify";
+import { prisma } from "./prisma";
+import { sendNotification } from "./notify";
 
 function getIo(): SocketIOServer | undefined {
   return (globalThis as unknown as { io?: SocketIOServer }).io;

@@ -29,13 +29,21 @@ export const POST = apiHandler(async (req: NextRequest) => {
     select: { workHoursEnd: true },
   });
 
-  // Check if leaving early
+  // Check if leaving early (Chunk 13.11)
   let leftEarly = false;
+  let minutesEarly = 0;
   if (user?.workHoursEnd) {
     const [h, m] = user.workHoursEnd.split(":").map(Number);
-    const shiftEnd = new Date();
+    const shiftEnd = new Date(now);
     shiftEnd.setHours(h!, m!, 0, 0);
-    if (now < shiftEnd) leftEarly = true;
+    
+    if (now < shiftEnd) {
+      const diffMins = Math.floor((shiftEnd.getTime() - now.getTime()) / 60000);
+      if (diffMins > 60) {
+        leftEarly = true;
+        minutesEarly = diffMins;
+      }
+    }
   }
 
   const updated = await prisma.checkIn.update({
@@ -43,11 +51,11 @@ export const POST = apiHandler(async (req: NextRequest) => {
     data: { checkedOutAt: now },
   });
 
-  // Update attendance if left early
+  // Update attendance status if left early and NOT waived
   if (leftEarly) {
     await prisma.attendance.update({
       where: { userId_date: { userId, date: today } },
-      data: { status: "LEFT_EARLY" },
+      data: { status: "LEFT_EARLY", note: `Left ${minutesEarly} minutes early` },
     });
   }
 

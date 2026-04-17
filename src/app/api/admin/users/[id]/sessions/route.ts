@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
-import { projectManagerCannotModifyUser, requireUserManagement } from "@/lib/admin-user-management";
+import { requireUserManagement } from "@/lib/admin-user-management";
 
 export const dynamic = "force-dynamic";
 
@@ -32,13 +32,6 @@ export async function DELETE(
   if (target.role === "SUPER_ADMIN" && actorRole !== "SUPER_ADMIN") {
     return NextResponse.json(
       { error: "Cannot modify SUPER_ADMIN sessions", code: "FORBIDDEN" },
-      { status: 403 }
-    );
-  }
-
-  if (projectManagerCannotModifyUser(actorRole, target.role)) {
-    return NextResponse.json(
-      { error: "Cannot modify administrator sessions", code: "FORBIDDEN" },
       { status: 403 }
     );
   }

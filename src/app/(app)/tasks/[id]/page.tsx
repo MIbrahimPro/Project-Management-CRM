@@ -58,6 +58,8 @@ export default function TaskDetailPage() {
   const [savingStatus, setSavingStatus] = useState(false);
   const [savingDesc, setSavingDesc] = useState(false);
   const [mobileTab, setMobileTab] = useState<"details" | "chat">("details");
+  const [startingMeeting, setStartingMeeting] = useState(false);
+  const [recordingsOpen, setRecordingsOpen] = useState(false);
 
   const descRef = useRef<StandaloneEditorHandle>(null);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -127,6 +129,35 @@ export default function TaskDetailPage() {
       if (!silent) toast.error("Failed to save description", { style: TOAST_ERROR_STYLE });
     } finally {
       setSavingDesc(false);
+    }
+  }
+
+  async function startMeeting() {
+    if (!task) return;
+    const meetingTab = window.open("about:blank", "_blank");
+    if (!meetingTab) {
+      toast.error("Please allow pop-ups to open meetings", { style: TOAST_ERROR_STYLE });
+      return;
+    }
+    setStartingMeeting(true);
+    try {
+      const res = await fetch("/api/meetings/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          title: `Task: ${task.title}`, 
+          taskId: task.id 
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to start meeting");
+      meetingTab.location.href = `/meetings/${data.data.meetingId}`;
+      toast.success("Meeting started", { style: TOAST_STYLE });
+    } catch (e: any) {
+      meetingTab.close();
+      toast.error(e.message, { style: TOAST_ERROR_STYLE });
+    } finally {
+      setStartingMeeting(false);
     }
   }
 
@@ -266,17 +297,37 @@ export default function TaskDetailPage() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Back button */}
-      <div className="mb-4 flex items-center gap-3">
-        <button
-          className="btn btn-ghost btn-sm gap-1"
-          onClick={() => router.push("/tasks")}
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Tasks
-        </button>
-        <span className="text-base-content/20">/</span>
-        <span className="text-sm text-base-content/60 truncate max-w-[200px]">{task.title}</span>
+      {/* Back button & Actions */}
+      <div className="mb-4 flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3">
+          <button
+            className="btn btn-ghost btn-sm gap-1"
+            onClick={() => router.push("/tasks")}
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Tasks
+          </button>
+          <span className="text-base-content/20">/</span>
+          <span className="text-sm text-base-content/60 truncate max-w-[200px]">{task.title}</span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button 
+            className="btn btn-ghost btn-sm gap-2"
+            onClick={() => setRecordingsOpen(true)}
+          >
+            <PlayCircle className="w-4 h-4" />
+            Recordings
+          </button>
+          <button 
+            className="btn btn-primary btn-sm gap-2"
+            onClick={startMeeting}
+            disabled={startingMeeting}
+          >
+            {startingMeeting ? <span className="loading loading-spinner loading-xs" /> : <Video className="w-4 h-4" />}
+            Start Meeting
+          </button>
+        </div>
       </div>
 
       {/* Mobile tab toggle */}
@@ -325,6 +376,21 @@ export default function TaskDetailPage() {
           )}
         </div>
       </div>
+      {/* Recordings Modal */}
+      {recordingsOpen && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-4xl bg-base-100">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="font-bold text-lg">Task Recordings</h3>
+              <button className="btn btn-ghost btn-sm btn-circle" onClick={() => setRecordingsOpen(false)}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <MeetingRecordingList taskId={taskId} />
+          </div>
+          <div className="modal-backdrop" onClick={() => setRecordingsOpen(false)} />
+        </div>
+      )}
     </div>
   );
 }

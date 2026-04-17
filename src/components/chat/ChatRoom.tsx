@@ -8,11 +8,21 @@ import {
   Paperclip,
   Reply,
   Send,
+  Settings,
   Smile,
+  Trash2,
   Video,
   X,
+  ChevronDown,
+  ChevronUp,
+  Play,
+  Pause,
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { UserAvatar } from "@/components/ui/UserAvatar";
+import { AvatarStack } from "@/components/projects/AvatarStack";
+import { usePresence } from "@/components/layout/PresenceProvider";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import toast from "react-hot-toast";
@@ -71,6 +81,19 @@ interface ChatRoomProps {
   showMeetingButton?: boolean;
   showSenderInfo?: boolean;
   refreshTrigger?: number;
+  roomDetails?: {
+    id: string;
+    type: string;
+    name: string | null;
+    adminsOnlyPosting?: boolean;
+    avatarUrl?: string | null;
+    createdById?: string;
+    members: { 
+      userId: string; 
+      user: { id: string; name: string; role: string; profilePicUrl: string | null }; 
+      isGroupAdmin?: boolean 
+    }[];
+  };
 }
 
 // ── Common emojis (no external package) ─────────────────────────────────────
@@ -128,6 +151,78 @@ function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
           <button className="btn btn-sm btn-circle bg-base-300/80 hover:bg-base-300 border-0" onClick={onClose}>
             <X className="w-4 h-4" />
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VoicePlayer({ src, isOwn }: { src: string; isOwn: boolean }) {
+  const [playing, setPlaying] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const audioRef = useRef<HTMLAudioElement>(null);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const onLoadedMetadata = () => setDuration(audio.duration);
+    const onTimeUpdate = () => setCurrentTime(audio.currentTime);
+    const onEnded = () => {
+      setPlaying(false);
+      setCurrentTime(0);
+    };
+    audio.addEventListener("loadedmetadata", onLoadedMetadata);
+    audio.addEventListener("timeupdate", onTimeUpdate);
+    audio.addEventListener("ended", onEnded);
+    return () => {
+      audio.removeEventListener("loadedmetadata", onLoadedMetadata);
+      audio.removeEventListener("timeupdate", onTimeUpdate);
+      audio.removeEventListener("ended", onEnded);
+    };
+  }, []);
+
+  const togglePlay = () => {
+    if (playing) audioRef.current?.pause();
+    else audioRef.current?.play();
+    setPlaying(!playing);
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const time = parseFloat(e.target.value);
+    setCurrentTime(time);
+    if (audioRef.current) audioRef.current.currentTime = time;
+  };
+
+  const formatTime = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  };
+
+  return (
+    <div className={`flex items-center gap-3 p-2 rounded-xl border ${
+      isOwn ? "bg-primary-content/10 border-primary-content/20" : "bg-base-300 border-base-300"
+    } min-w-[200px] mt-1`}>
+      <audio ref={audioRef} src={src} />
+      <button
+        onClick={togglePlay}
+        className={`btn btn-circle btn-xs ${isOwn ? "btn-ghost text-primary-content" : "btn-primary text-primary-content"}`}
+      >
+        {playing ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3 ml-0.5" />}
+      </button>
+      <div className="flex-1 flex flex-col gap-1">
+        <input
+          type="range"
+          min={0}
+          max={duration || 100}
+          value={currentTime}
+          onChange={handleSeek}
+          className={`range range-xs ${isOwn ? "range-primary-content" : "range-primary"}`}
+        />
+        <div className="flex justify-between text-[10px] opacity-60">
+          <span>{formatTime(currentTime)}</span>
+          <span>{formatTime(duration)}</span>
         </div>
       </div>
     </div>
@@ -215,7 +310,7 @@ function MessageMedia({ mediaUrl, mediaType, isOwn }: { mediaUrl: string; mediaT
     );
   }
   if (mediaType === "voice") {
-    return <audio controls src={signedUrl} className="mt-1 h-8 max-w-[200px]" />;
+    return <VoicePlayer src={signedUrl} isOwn={isOwn} />;
   }
   if (mediaType === "video") {
     return (
@@ -243,7 +338,9 @@ export function ChatRoom({
   showMeetingButton = false,
   showSenderInfo = true,
   refreshTrigger = 0,
+  roomDetails,
 }: ChatRoomProps) {
+  const presenceMap = usePresence();
   const [messages, setMessages] = useState<Message[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -253,7 +350,75 @@ export function ChatRoom({
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const [emojiPickerFor, setEmojiPickerFor] = useState<"input" | string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
   const [recordingTime, setRecordingTime] = useState(0);
+
+  const LONG_MESSAGE_THRESHOLD = 500;
+
+  function MessageContent({ content, msgId, isOwn }: { content: string; msgId: string; isOwn: boolean }) {
+    const isExpanded = expandedMessages.has(msgId);
+    const shouldTruncate = content.length > LONG_MESSAGE_THRESHOLD && !isExpanded;
+    const displayContent = shouldTruncate ? content.slice(0, LONG_MESSAGE_THRESHOLD) + "..." : content;
+
+    return (
+      <div className="flex flex-col gap-1">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            a: ({ node, ...props }) => (
+              <a
+                {...props}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline underline-offset-2 hover:text-primary transition-colors break-all"
+                onClick={(e) => e.stopPropagation()}
+              />
+            ),
+            p: ({ node, ...props }) => <p {...props} className="whitespace-pre-wrap break-words" />,
+          }}
+        >
+          {displayContent}
+        </ReactMarkdown>
+        {content.length > LONG_MESSAGE_THRESHOLD && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setExpandedMessages((prev) => {
+                const next = new Set(prev);
+                if (isExpanded) next.delete(msgId);
+                else next.add(msgId);
+                return next;
+              });
+            }}
+            className={`flex items-center gap-1 text-[10px] font-bold uppercase mt-1 hover:opacity-80 transition-opacity ${
+              isOwn ? "text-primary-content/80" : "text-primary"
+            }`}
+          >
+            {isExpanded ? (
+              <>
+                <ChevronUp className="w-3 h-3" /> Show less
+              </>
+            ) : (
+              <>
+                <ChevronDown className="w-3 h-3" /> Read more
+              </>
+            )}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // Manage Group State
+  const [showManageGroup, setShowManageGroup] = useState(false);
+  const [editingName, setEditingName] = useState("");
+  const [editingAdminsOnly, setEditingAdminsOnly] = useState(false);
+  const [editingAvatarUrl, setEditingAvatarUrl] = useState<string | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [editingMembers, setEditingMembers] = useState<string[]>([]);
+  const [editingAdmins, setEditingAdmins] = useState<string[]>([]);
+  const [savingGroup, setSavingGroup] = useState(false);
+  const [allUsersCache, setAllUsersCache] = useState<any[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -318,10 +483,19 @@ export function ChatRoom({
       );
     }
 
+    function onMessageDeleted({ messageId }: { messageId: string }) {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId ? { ...m, deletedAt: new Date().toISOString() } : m
+        )
+      );
+    }
+
     socket.on("new_message", onNewMessage);
     socket.on("user_typing", onTyping);
     socket.on("user_stopped_typing", onStoppedTyping);
     socket.on("message_reacted", onReacted);
+    socket.on("message_deleted", onMessageDeleted);
     socket.emit("mark_read", roomId);
 
     return () => {
@@ -329,6 +503,7 @@ export function ChatRoom({
       socket.off("user_typing", onTyping);
       socket.off("user_stopped_typing", onStoppedTyping);
       socket.off("message_reacted", onReacted);
+      socket.off("message_deleted", onMessageDeleted);
     };
   }, [socket, connected, roomId, currentUser.id]);
 
@@ -404,6 +579,23 @@ export function ChatRoom({
     setReplyTo(null);
   }
 
+  async function handleDeleteMessage(messageId: string) {
+    if (!confirm("Are you sure you want to delete this message for everyone?")) return;
+    try {
+      const res = await fetch(`/api/chat/messages/${messageId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error || "Failed to delete");
+      }
+      toast.success("Message deleted");
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  }
+
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -475,6 +667,60 @@ export function ChatRoom({
     return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
   }
 
+  const isGlobalManager = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(currentUser.role);
+  const isCustomGroup = roomDetails?.type === "custom_group";
+  const currentUserMember = roomDetails?.members?.find(m => m.userId === currentUser.id);
+  const isGroupAdmin = currentUserMember?.isGroupAdmin;
+  const canManageGroup = isCustomGroup && (isGroupAdmin || isGlobalManager);
+  const canPost = !isCustomGroup || !roomDetails?.adminsOnlyPosting || isGroupAdmin || isGlobalManager;
+
+  async function handleOpenManageGroup() {
+    setEditingName(roomDetails?.name || "");
+    setEditingAdminsOnly(roomDetails?.adminsOnlyPosting || false);
+    setEditingAvatarUrl(roomDetails?.avatarUrl || null);
+    setEditingMembers(roomDetails?.members?.map(m => m.userId) || []);
+    setEditingAdmins(roomDetails?.members?.filter(m => m.isGroupAdmin).map(m => m.userId) || []);
+    setShowManageGroup(true);
+    if (allUsersCache.length === 0) {
+      try {
+        const res = await fetch("/api/users");
+        const data = await res.json();
+        setAllUsersCache(data.data || []);
+      } catch (e) {
+        toast.error("Failed to load users");
+      }
+    }
+  }
+
+  async function handleSaveGroup() {
+    if (!editingName.trim() || editingMembers.length === 0) {
+      toast.error("Name and at least 1 member required");
+      return;
+    }
+    setSavingGroup(true);
+    try {
+      const res = await fetch(`/api/chat/rooms/custom-group/${roomId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editingName,
+          userIds: editingMembers,
+          adminIds: editingAdmins,
+          adminsOnlyPosting: editingAdminsOnly,
+          avatarUrl: editingAvatarUrl,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to save");
+      toast.success("Group saved");
+      setShowManageGroup(false);
+      if (typeof window !== "undefined") window.location.reload(); // Simple refresh for now to update parent state
+    } catch (e) {
+      toast.error("Failed to save group");
+    } finally {
+      setSavingGroup(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -487,21 +733,105 @@ export function ChatRoom({
     <div className="relative flex flex-col h-full bg-base-100">
       {/* ── Header ── */}
       <div className="flex items-center justify-between px-4 py-3 bg-base-200 border-b border-base-300 flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <h2 className="font-semibold text-base-content">{roomName}</h2>
-          <span
-            className={`w-2 h-2 rounded-full ${connected ? "bg-success" : "bg-base-content/20"}`}
-          />
+        <div className="flex items-center gap-3">
+          {roomDetails?.type === "custom_group" && roomDetails.avatarUrl ? (
+            <UserAvatar user={{ name: roomName, profilePicUrl: roomDetails.avatarUrl }} size={32} />
+          ) : roomDetails?.members && roomDetails.type !== "general_dm" ? (
+            <AvatarStack users={roomDetails.members.slice(0, 3).map(m => m.user)} overflow={Math.max(0, roomDetails.members.length - 3)} />
+          ) : null}
+          <div className="flex flex-col">
+            <h2 className="font-semibold text-base-content leading-tight flex items-center gap-2">
+              {roomName}
+              {roomDetails?.type === "general_dm" ? (
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    roomDetails.members.some(m => m.userId !== currentUser.id && presenceMap[m.userId] === "online") ? "bg-success" : "bg-base-content/30"
+                  }`}
+                />
+              ) : (
+                <span
+                  className={`w-2 h-2 rounded-full ${connected ? "bg-success" : "bg-base-content/20"}`}
+                  title={connected ? "Socket connected" : "Socket disconnected"}
+                />
+              )}
+            </h2>
+            {roomDetails?.type !== "general_dm" && roomDetails?.members && (
+              <div className="dropdown dropdown-hover">
+                <label
+                  tabIndex={0}
+                  className="text-xs text-base-content/60 font-medium mt-0.5 cursor-pointer hover:text-primary transition-colors flex items-center gap-1"
+                >
+                  {roomDetails.members.length} members • {roomDetails.members.filter(m => presenceMap[m.userId] === "online").length} online
+                </label>
+                <div
+                  tabIndex={0}
+                  className="dropdown-content z-[60] card card-compact w-64 p-2 shadow-xl bg-base-200 border border-base-300 ml-[-10px] mt-1"
+                >
+                  <div className="card-body p-1 max-h-80 overflow-y-auto">
+                    <div className="flex items-center justify-between mb-2 px-2 pt-1">
+                      <h3 className="font-bold text-xs uppercase tracking-wider opacity-50">Members</h3>
+                      <span className="badge badge-ghost badge-xs text-[10px]">{roomDetails.members.length}</span>
+                    </div>
+                    <div className="space-y-0.5">
+                      {roomDetails.members
+                        .sort((a, b) => {
+                          const aOnline = presenceMap[a.userId] === "online";
+                          const bOnline = presenceMap[b.userId] === "online";
+                          if (aOnline && !bOnline) return -1;
+                          if (!aOnline && bOnline) return 1;
+                          return a.user.name.localeCompare(b.user.name);
+                        })
+                        .map((m) => (
+                          <div
+                            key={m.userId}
+                            className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-base-300 transition-colors group"
+                          >
+                            <UserAvatar
+                              user={m.user}
+                              size={28}
+                              showPresence
+                              isOnline={presenceMap[m.userId] === "online"}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate flex items-center gap-1">
+                                {m.user.name}
+                                {m.isGroupAdmin && (
+                                  <span className="text-[10px] text-primary font-bold">★</span>
+                                )}
+                              </p>
+                              <p className="text-[10px] opacity-60 uppercase tracking-tighter">
+                                {m.user.role.toLowerCase().replace("_", " ")}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-        {showMeetingButton && onStartMeeting && (
-          <button
-            className="btn btn-ghost btn-sm btn-circle"
-            onClick={onStartMeeting}
-            title="Start meeting"
-          >
-            <Video className="w-4 h-4 text-primary" />
-          </button>
-        )}
+        <div className="flex items-center gap-1">
+          {showMeetingButton && onStartMeeting && (
+            <button
+              className="btn btn-ghost btn-sm btn-circle"
+              onClick={onStartMeeting}
+              title="Start meeting"
+            >
+              <Video className="w-4 h-4 text-primary" />
+            </button>
+          )}
+          {canManageGroup && (
+            <button
+              className="btn btn-ghost btn-sm btn-circle"
+              onClick={handleOpenManageGroup}
+              title="Manage Group"
+            >
+              <Settings className="w-4 h-4 text-base-content/70" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── Messages ── */}
@@ -622,9 +952,11 @@ export function ChatRoom({
                     ) : (
                       <>
                         {msg.content && (
-                          <span className="whitespace-pre-wrap break-words">
-                            {msg.content}
-                          </span>
+                          <MessageContent 
+                            content={msg.content} 
+                            msgId={msg.id} 
+                            isOwn={isOwn} 
+                          />
                         )}
                         {msg.mediaUrl && msg.mediaType && (
                           <MessageMedia
@@ -650,22 +982,46 @@ export function ChatRoom({
                     {/* Hover actions */}
                     {!isDeleted && (
                       <div
-                        className={`absolute -top-6 ${isOwn ? "left-0" : "right-0"} hidden group-hover:flex items-center gap-0.5 bg-base-200 border border-base-300 rounded-lg shadow-sm px-1 py-0.5`}
+                        className={`absolute -top-10 ${
+                          isOwn ? "right-0" : "left-0"
+                        } hidden group-hover:flex items-center gap-1 p-1 bg-base-200 border border-base-300 rounded-xl shadow-lg z-20`}
                       >
+                        {/* Quick Reactions */}
+                        <div className="flex items-center gap-0.5 border-r border-base-300 pr-1 mr-0.5">
+                          {["👍", "❤️", "😂", "😮", "😢", "🙏"].map((emoji) => (
+                            <button
+                              key={emoji}
+                              className="w-6 h-6 flex items-center justify-center hover:bg-base-300 rounded-md transition-all hover:scale-125"
+                              onClick={() => socket?.emit("react", { messageId: msg.id, emoji })}
+                            >
+                              <span className="text-sm">{emoji}</span>
+                            </button>
+                          ))}
+                        </div>
+
                         <button
                           title="Reply"
-                          className="p-1 hover:text-primary rounded"
+                          className="p-1 hover:text-primary rounded text-base-content/70 hover:bg-base-300 transition-colors"
                           onClick={() => setReplyTo(msg)}
                         >
-                          <Reply className="w-3 h-3" />
+                          <Reply className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          title="React"
-                          className="p-1 hover:text-primary rounded"
+                          title="More emojis"
+                          className="p-1 hover:text-primary rounded text-base-content/70 hover:bg-base-300 transition-colors"
                           onClick={() => setEmojiPickerFor(msg.id)}
                         >
-                          <Smile className="w-3 h-3" />
+                          <Smile className="w-3.5 h-3.5" />
                         </button>
+                        {(isOwn || currentUser.role === "SUPER_ADMIN") && (
+                          <button
+                            title="Delete"
+                            className="p-1 hover:text-error rounded text-base-content/70 hover:bg-base-300 transition-colors"
+                            onClick={() => handleDeleteMessage(msg.id)}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -745,7 +1101,11 @@ export function ChatRoom({
           </div>
         )}
 
-        {isRecording ? (
+        {!canPost ? (
+          <div className="p-3 text-center text-sm text-base-content/50 italic bg-base-300 rounded-lg">
+            Only admins can post in this group.
+          </div>
+        ) : isRecording ? (
           <div className="flex items-center gap-3 p-2 bg-error/10 rounded-xl border border-error/30">
             <div className="w-2 h-2 rounded-full bg-error animate-pulse flex-shrink-0" />
             <span className="text-sm text-error flex-1">
@@ -830,6 +1190,138 @@ export function ChatRoom({
           </p>
         )}
       </div>
+
+      {/* Manage Group Modal */}
+      {showManageGroup && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-base-100 rounded-xl max-w-md w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-4 border-b border-base-300 flex items-center justify-between">
+              <h3 className="font-semibold text-lg">Manage Group</h3>
+              <button className="btn btn-ghost btn-sm btn-circle" onClick={() => setShowManageGroup(false)}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 space-y-4">
+              <div className="form-control">
+              <div className="flex items-center gap-4 mb-4">
+                <UserAvatar user={{ name: editingName || "Group", profilePicUrl: editingAvatarUrl }} size={64} />
+                <div className="flex-1">
+                  <label className="btn btn-sm btn-outline">
+                    {uploadingAvatar ? <span className="loading loading-spinner loading-xs" /> : "Upload Image"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setUploadingAvatar(true);
+                        const formData = new FormData();
+                        formData.append("file", file);
+                        formData.append("type", "image");
+                        try {
+                          const res = await fetch("/api/chat/upload", { method: "POST", body: formData });
+                          const data = await res.json();
+                          if (res.ok && data.data?.path) setEditingAvatarUrl(data.data.path);
+                          else throw new Error(data.error || "Upload failed");
+                        } catch (err) {
+                          toast.error(err instanceof Error ? err.message : "Upload failed");
+                        } finally {
+                          setUploadingAvatar(false);
+                        }
+                      }}
+                    />
+                  </label>
+                  {editingAvatarUrl && (
+                    <button className="btn btn-sm btn-ghost text-error ml-2" onClick={() => setEditingAvatarUrl(null)}>
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+              <label className="label text-xs font-semibold">Group Name</label>
+                <input
+                  type="text"
+                  className="input input-bordered"
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.target.value)}
+                />
+              </div>
+
+              <div className="form-control">
+                <label className="label text-xs font-semibold flex items-center justify-between">
+                  <span>Members</span>
+                  <span className="text-base-content/50">Admin?</span>
+                </label>
+                <div className="border border-base-300 rounded-lg overflow-hidden max-h-48 overflow-y-auto">
+                  {allUsersCache.filter(u => (u.id !== currentUser.id || !isGroupAdmin) && u.role !== "CLIENT" && u.role !== "SUPER_ADMIN").map(u => (
+                    <div key={u.id} className="flex items-center justify-between p-2 hover:bg-base-200 border-b border-base-300 last:border-0">
+                      <label className="flex items-center gap-3 cursor-pointer flex-1">
+                        <input
+                          type="checkbox"
+                          className="checkbox checkbox-sm"
+                          checked={editingMembers.includes(u.id) || (u.id === currentUser.id && isGroupAdmin)}
+                          disabled={u.id === currentUser.id && isGroupAdmin}
+                          onChange={(e) => {
+                            if (e.target.checked) setEditingMembers(prev => [...prev, u.id]);
+                            else {
+                              setEditingMembers(prev => prev.filter(id => id !== u.id));
+                              setEditingAdmins(prev => prev.filter(id => id !== u.id));
+                            }
+                          }}
+                        />
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium">{u.name} {u.id === currentUser.id ? "(You)" : ""}</span>
+                          <span className="text-xs text-base-content/60">{u.role}</span>
+                        </div>
+                      </label>
+                      {editingMembers.includes(u.id) || (u.id === currentUser.id && isGroupAdmin) ? (
+                        <input
+                          type="checkbox"
+                          className="checkbox checkbox-sm checkbox-primary"
+                          title="Make Admin"
+                          checked={editingAdmins.includes(u.id) || (u.id === currentUser.id && isGroupAdmin)}
+                          disabled={u.id === currentUser.id && isGroupAdmin}
+                          onChange={(e) => {
+                            if (e.target.checked) setEditingAdmins(prev => [...prev, u.id]);
+                            else setEditingAdmins(prev => prev.filter(id => id !== u.id));
+                          }}
+                        />
+                      ) : <div className="w-6" />}
+                    </div>
+                  ))}
+                  {allUsersCache.length <= 1 && (
+                    <div className="p-3 text-sm text-center text-base-content/40">No other users available</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="form-control flex-row items-center justify-between p-3 border border-base-300 rounded-lg">
+                <div>
+                  <span className="label-text font-semibold block">Only Admins Can Post</span>
+                  <span className="text-xs text-base-content/60">Restrict posting to group admins only</span>
+                </div>
+                <input
+                  type="checkbox"
+                  className="toggle toggle-primary"
+                  checked={editingAdminsOnly}
+                  onChange={(e) => setEditingAdminsOnly(e.target.checked)}
+                />
+              </div>
+            </div>
+            <div className="p-4 border-t border-base-300 bg-base-200/50 flex justify-end gap-2">
+              <button className="btn btn-ghost" onClick={() => setShowManageGroup(false)}>Cancel</button>
+              <button
+                className="btn btn-primary"
+                onClick={handleSaveGroup}
+                disabled={savingGroup || !editingName.trim() || editingMembers.length === 0}
+              >
+                {savingGroup ? <span className="loading loading-spinner loading-sm" /> : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

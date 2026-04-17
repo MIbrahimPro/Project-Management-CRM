@@ -1,6 +1,5 @@
 import type { WorkspaceTaskStatus } from "@/components/workspaces/types";
 
-const ADMIN_ROLES = new Set(["SUPER_ADMIN", "ADMIN"]);
 const MANAGER_ROLES = new Set(["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"]);
 
 const ALL_STATUSES: WorkspaceTaskStatus[] = [
@@ -14,9 +13,8 @@ const ALL_STATUSES: WorkspaceTaskStatus[] = [
 
 /**
  * Whether `role` may move a post from `from` to `to`.
- * - Admins: any transition.
- * - Project managers: any except changing a post that is already **Published** (only Super Admin / Admin may).
- * - Others: free movement among Idea / In progress / In review; **Approved** and **Archive** require manager; from **Approved** only **Published**; **Published** and **Archived** locked (except managers/admins per above).
+ * - Managers (SUPER_ADMIN / ADMIN / PROJECT_MANAGER): any transition.
+ * - Others: free movement among Idea / In progress / In review; **Approved** and **Archive** require manager; from **Approved** only **Published**; **Published** and **Archived** locked.
  */
 export function canTransitionWorkspacePost(
   role: string,
@@ -28,12 +26,7 @@ export function canTransitionWorkspacePost(
   if (to === "APPROVED" && !MANAGER_ROLES.has(role)) return false;
   if (to === "ARCHIVED" && !MANAGER_ROLES.has(role)) return false;
 
-  if (ADMIN_ROLES.has(role)) return true;
-
-  if (role === "PROJECT_MANAGER") {
-    if (from === "PUBLISHED") return false;
-    return true;
-  }
+  if (MANAGER_ROLES.has(role)) return true;
 
   if (["IDEA", "IN_PROGRESS", "IN_REVIEW"].includes(from)) {
     return ["IDEA", "IN_PROGRESS", "IN_REVIEW"].includes(to);

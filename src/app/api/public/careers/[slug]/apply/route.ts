@@ -30,7 +30,7 @@ export async function POST(req: NextRequest, ctx: { params: { slug: string } }) 
     where: { publicSlug: slug, status: "OPEN" },
     select: {
       id: true,
-      questions: { select: { id: true, required: true } },
+      questions: { select: { id: true, required: true, type: true, appliesToPublicForm: true } },
     },
   });
   if (!request) {
@@ -73,32 +73,88 @@ export async function POST(req: NextRequest, ctx: { params: { slug: string } }) 
     return NextResponse.json({ error: "You have already applied for this position", code: "CONFLICT" }, { status: 409 });
   }
 
-  // CV upload (optional)
+  // CV upload (optional, PDF only)
   let cvUrl: string | null = null;
   const cvFile = formData.get("cv") as File | null;
   if (cvFile && cvFile.size > 0) {
     if (cvFile.size > MAX_CV_SIZE) {
       return NextResponse.json({ error: "CV file must be under 10 MB", code: "VALIDATION_ERROR" }, { status: 400 });
     }
-    const ext = cvFile.name.split(".").pop()?.toLowerCase() ?? "pdf";
+    // Strict PDF-only check: both the browser-reported MIME and the extension must be PDF.
+    const ext = cvFile.name.split(".").pop()?.toLowerCase() ?? "";
+    const isPdfMime = cvFile.type === "application/pdf";
+    const isPdfExt = ext === "pdf";
+    if (!isPdfMime || !isPdfExt) {
+      return NextResponse.json({
+        error: "CV must be a PDF file",
+        code: "VALIDATION_ERROR",
+      }, { status: 400 });
+    }
+    // Magic-byte sniff: PDF starts with "%PDF-" (0x25 0x50 0x44 0x46 0x2D).
     const buffer = Buffer.from(await cvFile.arrayBuffer());
-    const path = `cv-files/${request.id}-${Date.now()}.${ext}` as const;
-    await uploadFile(buffer, path, cvFile.type || "application/pdf");
+    const magic = buffer.subarray(0, 5).toString("utf8");
+    if (magic !== "%PDF-") {
+      return NextResponse.json({
+        error: "Uploaded file is not a valid PDF",
+        code: "VALIDATION_ERROR",
+      }, { status: 400 });
+    }
+    const path = `cv-files/${request.id}-${Date.now()}.pdf` as const;
+    await uploadFile(buffer, path, "application/pdf");
     cvUrl = path;
   }
 
   // Parse answers
+  const candidateEmailSafe = email.replace(/[^a-zA-Z0-9.-]/g, "_");
   const answers: { questionId: string; answer: string }[] = [];
   for (const q of request.questions) {
-    const answer = (formData.get(`answer_${q.id}`) as string | null)?.trim() ?? "";
-    if (q.required && !answer) {
+    if (!q.appliesToPublicForm) continue;
+
+    let finalAnswer = "";
+
+    if (q.type === "FILE") {
+      const file = formData.get(`answer_${q.id}`) as File | null;
+      if (file && file.size > 0) {
+        if (file.size > MAX_CV_SIZE) {
+          return NextResponse.json({ error: `File for question ${q.id} exceeds 10MB limit`, code: "VALIDATION_ERROR" }, { status: 400 });
+        }
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const path = `answers/${request.id}-${candidateEmailSafe}-${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+        await uploadFile(buffer, path as any, file.type || "application/octet-stream");
+        finalAnswer = path;
+      }
+    } else {
+      finalAnswer = (formData.get(`answer_${q.id}`) as string | null)?.trim() ?? "";
+      
+      // Data type validations if answer is provided
+      if (finalAnswer) {
+        if (q.type === "NUMBER" && isNaN(Number(finalAnswer))) {
+          return NextResponse.json({ error: `Answer for question ${q.id} must be a number`, code: "VALIDATION_ERROR" }, { status: 400 });
+        }
+        if (q.type === "DATE" && isNaN(Date.parse(finalAnswer))) {
+          return NextResponse.json({ error: `Answer for question ${q.id} must be a valid date`, code: "VALIDATION_ERROR" }, { status: 400 });
+        }
+        if (q.type === "BOOLEAN" && !["true", "false"].includes(finalAnswer.toLowerCase())) {
+          return NextResponse.json({ error: `Answer for question ${q.id} must be true or false`, code: "VALIDATION_ERROR" }, { status: 400 });
+        }
+        if (q.type === "EMAIL" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(finalAnswer)) {
+          return NextResponse.json({ error: `Answer for question ${q.id} must be a valid email`, code: "VALIDATION_ERROR" }, { status: 400 });
+        }
+        if (q.type === "URL" && !/^https?:\/\/.+/.test(finalAnswer)) {
+          return NextResponse.json({ error: `Answer for question ${q.id} must be a valid URL (starting with http/https)`, code: "VALIDATION_ERROR" }, { status: 400 });
+        }
+      }
+    }
+
+    if (q.required && !finalAnswer) {
       return NextResponse.json({
         error: `Answer required for question ${q.id}`,
         code: "VALIDATION_ERROR",
       }, { status: 400 });
     }
-    if (answer) {
-      answers.push({ questionId: q.id, answer });
+    
+    if (finalAnswer) {
+      answers.push({ questionId: q.id, answer: finalAnswer });
     }
   }
 

@@ -1,0 +1,112 @@
+- when changin profile picture, the overlay behind the image isnt full screen
+- Some people have dublicate chats, like manager and HR have 2 chats, although both of them work and work seperately,, but this is not required behaviour and needs to be fixed, 
+- Only Manager is able to start meeting in chat, A normal person should also be able to start meeting with anyone (except clients,,, and ofcourse he doesnt has a chat with him so that is already implied)
+- Starting meet gives error Script load error: https://localhost:8443/external_api.js 2117-7c93e697a3b935f2.js:1:4064
+    - Although Clicking join works (the person invited),  and it correctly takes us to a page where we can choose mic and camera and etc,,, but then we go to a page byt jetsi which I dont want
+        - This page has a sidebar with jetsi logo and join meeting with code in front, name edit,, join and join without audio options, and a camera feed(if turned on) on the right side
+        - This page should not exist rather,, we have custom pages,,, the page that came before this alrady had the camera on and off thing,,, when we click camera on,,, it should show a small preview,, and for microphone test audio levels,,, 
+        - When we click Join it should do like waiting to be admitted, or if empty meeting or like if I am creating the meeting then we just go in directly 
+    - After meeting is joined, I still see jetsi logo in there,, remove it
+    - The name is something like "DevRolin MV Yf .." something gebrish,, fix it,, it should rather be either Only DevRolin Meeting,,, or not shown at all
+    - We havent applied the person's choosen theme to the Meeting UI, which needs fixing
+    - In meeting  Setting >  Profile Allows to edit name,,, which should not be an option
+    - why does it say logged in as Logged in as 5fae6697-19a2-4daa-a082-f3ff4aa46be1@meet.jitsi   this is not good,,, make it better,, maybe the users email from platform or nothing
+    - Invite button works, but there should be a "Invite with link" And copy link button too,
+    - BTW Manager cant join his own meeting yet,,, I am telling all this from HR perspective,, who joined using the join button
+    - I dont see a record Meeting button,, Meeting recording Should be available,, and Meeting recording should work 
+- In General chat,, when I open a chat,, I should be able to click on the Nma eof the chat (or group) to view setting in a model,,, It will have the following things 
+    - Name and Pfp view for everyone,,,, cliking pfp to enlarge
+    - If Group, Admins can also edit the pfp, and the name of the group from there,,, 
+    - We can view all Members of the group, And click on any to open his private chat with us,, (restricted,,, meaning a developer or someone cant just click a client to open chat with him,,, it wont allow that)
+    - We have  buttons like leave group to leave the group,, which removes you from group,,, but all old messages should remain and should not be effected, If he has left the group,,, he can delete then delete the group,
+        - The other group members should not be effected,, and the person who left, his old messages will still remain
+    - List all Media sent in the chat, and all links
+    - See all meeting recordings that were done through that group or chat
+- in general chat 
+    - Ability to delete sent messages,,, Only 1 option,, delete for all
+    - Add more emojis,, and we should support android and IOS emojis,
+    - I didnt test this but links should be click able, phone numbers too, 
+    - Very long messages should be shortened with read more,, and a right click (or long press on phones) and get copy, delete, reply, and react options
+    - Same as whatsapp react options
+    - Read and unread and delivered and not delivered tick signs.
+    - Voice message audio player doesnt change with theme change
+    - The Ai Button goes over the audio button,, Fix this UI issue,,, maybe make the AI button to be drag and place it somewhere else etc,, (remembered for next time,) and also ,,, pushed to side,,, which will put it in sidebar,,, and you can open sidebar, click open AI and it will put the floating widget back on screen and open the AI sidebar 
+    - Sometimes the react and reply thingy UI bubble becomes bad contrast especailly on our sent messages side,,, fix that
+
+- Project Creation, team selection,,, The person can choose or unchoose himself,,, whic is a bug,,, he should not appear in that place,, rather he should be a part because he is creating it (Easy fix,, admin and project managers dont appear in the link and are always in each group)
+- Ai client questions Generate generates too many questions,,, make it so thaat it generaes less questions,,, only necessary ones
+- The AI on Milestones making Accepts a prompt,,, Should also read existing milestone describtions if written, and modify them or rewrite them etc
+- Document Section has more problems
+    - Here is a big problem,, the AI make those milestone documents,,, But when I went to documents and see them,, thy are created but empty 
+    - When document gets long,, you cant scroll up and down,, you have to move your typing cursor up and down to scroll
+    - When I type / slash, a menu open up, like a floating focusable div, 
+        - This menu has things missing,, First it should have a background,,, since it doesnt it glitches all over the place,,,
+        - It should have a options for AI, which opens up a little prompt writting place,,, and is given to AI,,, the AI, gets a context of the WHOLE PROJECT,,, ALL THE DOCUMENTS, AND THIS DOCUMENT AND EVERYTHING AND ALSO KNOWS WHERE THE ETXT WILL BE ENTERED AND RETURNS APPROPRIATE TEXT,, which is entered at the spot on the document,,, sockets,,, so live adding 
+    - When I select a text,,, a floating menu appears with text formating options like bold italic and etc,,, this has problems
+        - No bg,,, add bg to it according to theme and etc
+        - It should have options to summarize or professionalize 
+            - Yes they exist,, I saw them once,,, but they come up accidentally and I couldnt figure out how they came,,, it should come out when I select somethin,, and INSIDE THE EXISTING MENU 
+- Project AI section has problems,
+    - Write now if I go into project,, we still have that floating widget right?,,, remove it,,, 
+    - When in project that floating widget should not be there,,, 
+    - Add a new sidebar link called AI chat, only for team and manager not for client
+    - This chat is 1 for all like the same chat continues for team and manger and admin,, you cant reset the chat,, or something
+    - This AI should have access to all information about project,, It can read All documents, and all chats and budget and describtion and etc, 
+    - It can maintain a NOTES.md or something file for itsself, so it can keep stuff for next time
+    - Use a high context token model for this
+    - The AI should have tools calling and chain of though to access required information when needed, 
+- Project page should have a tasks section,, which shows tasks filtered to only tasks of THAT project,,, and the add task button also doesnt ask project rather just adds to that project, and doesnt ask team,, rather all project ones are copied to it,,
+
+- When task creation,, dont ask state,,, the default state will be todo and can be changed 
+- I like the UI of social media inside,,, like the cards and etc,, change the tasks list UI the same,,, like,, current ones here, past ones below
+
+- Task meeting?,,, there should be a meetings button and we can start meeting and etc and recoridings and etc
+
+- Social media Tasks,,, what do you mean create past task,, remove that button
+- Adding and removing people to Social media project?
+
+
+- Dashboard
+    - Colors fix em,, only looks good in light mode,,, make so that they look good in all themes
+
+- I am gettin gredis errors in logs,,, fix that,,, I am using docker container jetsi,,, and have stopped the redis
+
+- Attendance,,,
+    - Everyday attendance is marked except Sunday,, 
+    - Everyone has a work start and end time,, and if someone doesnt then it is defaulted to 7:00 pm 3 am and Pakistani time
+    - If a person didnt check in on a day,, he should be marked absent (except sunday)
+        - Check in has 2 modes,, auto and manual, 
+        - if a person comes in early (lets say he comes in at 6 am), and he checks in manually, then the time stamp is recorded,,, and after 8 hours,,, he is notified as work hours complete,
+        - If a person doesnt check in manually,, and he becomes online within 1 hour of his check in time, then auto check in is marked (As his work check in regular time 7 am),, and after 8 hours he is notified as work hours complete
+        - If a person doesnt check in manually,, and he becomes online after 1 hour of his check in time,, then his check in is marked automatically,, and he is notified after his 8 hours are complete
+        - If he had checked in manually,, or had come in on time,, then chec kout will happen automatically and he will be marked present,,,
+        - If he comes in late,, and marked auto,, so when 8 hours are complete he will be notified, and marked as present
+        - If a person doesnt come on at all,, he will be marked absent
+        - If a person works over hours,, he will be marked over hour work
+            - This will be done as,,, when his 8 hours are done,, he will get a notification as his work hours are complete, and he can check out,, or he can continue working,,, 
+            - He should get a popup model saying youve completed your 8 hour duty,, He can click check out,, or he can click "Work over time 1 hour",, 
+                - If he clicks check out,,, he should still be able to use the platform,,, just marked present,,
+                - If he doesnt respond,, still just present
+                - If he responds with work over time,,, he hould be notified again that over time n hor complete,, and so on,,, 
+                    - He can continue working,,, etc
+                - This will mark him as worked n hours overtime
+    - The manager and admin should not have attendance,,, rather when they click on attendance page, that page should be different attendance management page,, 
+        - they should be able to see all employees, and see employee not present today, 
+        - He should 1 click send them a message to be online
+        - He should be able to PING someone
+            - pinging someone will send a notification to that user (in the notification center and also in the chat as a message from a system bot,, or a popup, or something,,, but something reliable that can be opened up again if the person was offline or something ) , this will have a button,, if the user clicks it,, he will be marked as online,, and nothing will happen,,, but if he misses it,, and his work hours gets complete,,, he will still have 1 extra hour,,, and in that hour if he clicks it,, nothing happens,,, but if he still misses it,,, then he will be marked as left early n hours and minutes,,, calculated by when the ping was sent
+            - If manager cant send 2 pings if the first isnt answered yet
+        - If a person manually has clicked check out early,, It will be shown left early nn minutes etc something (although,,, if he had only an hour or less left,,, that it wont effect his attendance status, and will be marked just present,,)
+            - The manager can still ping him,, in which case if answered, then marked present or else,,, marked as left early n minutes (when he checked out or pinged something)
+- Emplouee management
+    - Pfp's not showing,, 
+    - data in graphs?
+    - Salary only can be updated by manager admin
+    - Fix contracts,, instead of create contract and shit,, every person has 1 contract,,, HR or manager will open the page,, everyone listed,, the ones without contract listed as red borders,,, button to create contract for <user> and you can create it and it will be notified to him,, and you can also upload a new to replace the previous one fo him and that will also replace 
+    - Contracts can't be for admins and managers
+    - Clicking down arrow on contract and we get Something went wrong can't access property "name", e.uploadedBy is undefined
+    - contract should be notified (leading to profile page) when changed and the person has to go to his profile page,,, open the contract,,, and click SIGN CONTRACT,,, which just changes the status to signed,,,
+        - If signed and HR manager updated the contract,,, it gets pending again
+        - HR anad manager can see the status of Signed etc
+
+        

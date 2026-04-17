@@ -13,5 +13,8 @@ export const GET = apiHandler(async (req: NextRequest) => {
   if (!path) return NextResponse.json({ error: "Missing path" }, { status: 400 });
 
   const signedUrl = await getSignedUrl(path, 3600); // 1-hour URL
+  if (!signedUrl) {
+    console.error(`[SignedURL] Failed to generate for path: ${path}`);
+  }
   return NextResponse.json({ url: signedUrl });
 });

@@ -2,6 +2,7 @@ import { Server, Socket } from "socket.io";
 import { verifyAccessToken } from "./tokens";
 import { setPresence, updateLastActive, setTyping, clearTyping } from "./redis";
 import { prisma } from "./prisma";
+import { checkAutoCheckIn } from "./attendance-helpers";
 import { createNormalChatMessage } from "./chat-send-message";
 import { callAI } from "./ai";
 import { parse as parseCookies } from "cookie";
@@ -215,11 +216,13 @@ export function setupSocketServer(io: Server) {
     const userId = socket.data.userId as string;
     void setPresence(userId, "online");
     presenceNS.emit("presence_update", { userId, status: "online" });
+    void checkAutoCheckIn(userId);
 
     // Heartbeat: client sends ping every 30s
     socket.on("ping", async () => {
       void setPresence(userId, "online");
       void updateLastActive(userId);
+      void checkAutoCheckIn(userId);
     });
 
     socket.on("disconnect", async () => {

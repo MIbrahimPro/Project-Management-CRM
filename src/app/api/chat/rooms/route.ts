@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 // Room types considered "general" — i.e. shown on the top-level /chat page.
 // Everything else (project rooms, task groups, workspace rooms, etc.) is
 // "contextual" and lives inside its project/task/workspace page.
-const GENERAL_ROOM_TYPES = ["general_group", "general_dm"];
+const GENERAL_ROOM_TYPES = ["general_group", "general_dm", "custom_group"];
 
 export const GET = apiHandler(async (req: NextRequest) => {
   const userId = req.headers.get("x-user-id") ?? forbidden();
@@ -43,7 +43,19 @@ export const GET = apiHandler(async (req: NextRequest) => {
 
   const rooms = await prisma.chatRoom.findMany({
     where,
-    include: {
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      projectId: true,
+      workspaceId: true,
+      taskId: true,
+      workspaceTaskId: true,
+      hiringRequestId: true,
+      createdById: true,
+      adminsOnlyPosting: true,
+      avatarUrl: true,
+      createdAt: true,
       members: {
         include: {
           user: {
@@ -85,5 +97,14 @@ export const GET = apiHandler(async (req: NextRequest) => {
     })
   );
 
-  return NextResponse.json({ data: roomsWithUnread });
+  const canChatWithClients = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(role);
+  const finalRooms = roomsWithUnread.filter((room) => {
+    if (room.type === "general_dm" && !canChatWithClients) {
+      const hasClient = room.members.some((m) => m.user.role === "CLIENT" && m.userId !== userId);
+      if (hasClient) return false;
+    }
+    return true;
+  });
+
+  return NextResponse.json({ data: finalRooms });
 });

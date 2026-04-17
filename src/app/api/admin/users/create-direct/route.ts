@@ -5,7 +5,7 @@ import { Resend } from "resend";
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import { logAction } from "@/lib/audit";
-import { projectManagerCannotAssignPrivilegedRole, requireUserManagement } from "@/lib/admin-user-management";
+import { requireUserManagement } from "@/lib/admin-user-management";
 
 export const dynamic = "force-dynamic";
 
@@ -35,16 +35,8 @@ export async function POST(req: NextRequest) {
   const guard = requireUserManagement(req);
   if (guard) return guard;
   const adminId = req.headers.get("x-user-id")!;
-  const actorRole = req.headers.get("x-user-role") ?? "";
 
   const body = bodySchema.parse(await req.json());
-
-  if (projectManagerCannotAssignPrivilegedRole(actorRole, body.role)) {
-    return NextResponse.json(
-      { error: "Cannot create user with administrator role", code: "FORBIDDEN" },
-      { status: 403 }
-    );
-  }
 
   // Check for duplicate email
   const existing = await prisma.user.findUnique({ where: { email: body.email }, select: { id: true } });

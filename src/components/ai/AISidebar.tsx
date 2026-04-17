@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { Plus, Send, Sparkles, X } from "lucide-react";
+import { LayoutGrid, Plus, Send, Sparkles, X } from "lucide-react";
 import { AiMarkdown } from "./AiMarkdown";
 
 type Message = { role: "user" | "assistant"; content: string };
@@ -13,7 +13,9 @@ interface AISidebarProps {
 }
 
 export function AISidebar({ userRole }: AISidebarProps) {
+  const pathname = usePathname();
   if (userRole === "CLIENT") return null;
+  if (pathname.includes("/projects/")) return null;
   return <AISidebarInner />;
 }
 
@@ -39,6 +41,7 @@ function usePageContext() {
 }
 
 function AISidebarInner() {
+  const [isDocked, setIsDocked] = useState(false);
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -57,7 +60,15 @@ function AISidebarInner() {
       const n = Number.parseInt(saved, 10);
       if (Number.isFinite(n) && n >= MIN_WIDTH && n <= MAX_WIDTH) setWidth(n);
     }
+    const docked = localStorage.getItem("ai-sidebar-docked") === "true";
+    setIsDocked(docked);
   }, []);
+
+  const handleToggleDock = () => {
+    setIsDocked(!isDocked);
+    localStorage.setItem("ai-sidebar-docked", String(!isDocked));
+    if (!isDocked) setOpen(true);
+  };
 
   useEffect(() => {
     function onMove(e: MouseEvent) {
@@ -143,13 +154,21 @@ function AISidebarInner() {
 
   return (
     <>
-      <button
-        className="fixed bottom-6 right-6 z-30 btn btn-primary btn-circle shadow-lg"
-        onClick={() => setOpen((o) => !o)}
-        title="AI Assistant"
-      >
-        <Sparkles className="w-5 h-5" />
-      </button>
+      {!isDocked && (
+        <motion.button
+          drag
+          dragConstraints={{ left: -window.innerWidth + 100, right: 0, top: -window.innerHeight + 100, bottom: 0 }}
+          dragElastic={0.1}
+          dragTransition={{ bounceStiffness: 600, bounceDamping: 20 }}
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+          className="fixed bottom-6 right-6 z-30 btn btn-primary btn-circle shadow-lg flex items-center justify-center"
+          onClick={() => setOpen((o) => !o)}
+          title="AI Assistant (Drag to move)"
+        >
+          <Sparkles className="w-5 h-5" />
+        </motion.button>
+      )}
 
       <AnimatePresence>
         {open && (
@@ -178,6 +197,14 @@ function AISidebarInner() {
                 )}
               </div>
               <div className="flex items-center gap-1">
+                <button
+                  className="btn btn-ghost btn-xs gap-1"
+                  onClick={handleToggleDock}
+                  title={isDocked ? "Pop out to floating widget" : "Dock to side"}
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  {isDocked ? "Pop out" : "Dock"}
+                </button>
                 <button className="btn btn-ghost btn-xs gap-1" onClick={newChat} title="New conversation">
                   <Plus className="w-3.5 h-3.5" /> New
                 </button>

@@ -41,11 +41,15 @@ export const POST = apiHandler(async (req: NextRequest) => {
   let status: "PRESENT" | "LATE" | "VERY_LATE" = "PRESENT";
   if (user?.workHoursStart) {
     const [h, m] = user.workHoursStart.split(":").map(Number);
-    const shiftStart = new Date();
+    const shiftStart = new Date(now);
     shiftStart.setHours(h!, m!, 0, 0);
+    
+    // If shift start is e.g. 19:00 and it's 18:00, minutesLate is -60.
     const minutesLate = (now.getTime() - shiftStart.getTime()) / 60000;
+    
     if (minutesLate > 60) status = "VERY_LATE";
     else if (minutesLate > 15) status = "LATE";
+    else status = "PRESENT"; // includes early check-in
   }
 
   // If the user already had a session today (checked out), reopen it by clearing checkedOutAt.

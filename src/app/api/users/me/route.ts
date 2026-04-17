@@ -17,6 +17,7 @@ const USER_SELECT = {
   isGoogleConnected: true,
   currencyPreference: true,
   clientColor: true,
+  salary: true,
   workHoursStart: true,
   workHoursEnd: true,
   createdAt: true,

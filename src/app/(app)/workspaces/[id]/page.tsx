@@ -2,11 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Instagram, Layers, Linkedin, Plus, Twitter, Users, X, Youtube } from "lucide-react";
+import { Instagram, Layers, Linkedin, Plus, Twitter, Users, X, Youtube, Video, PlayCircle } from "lucide-react";
+import MeetingRecordingList from "@/components/meetings/MeetingRecordingList";
 import toast from "react-hot-toast";
 import { WorkspacePostCard } from "@/components/workspaces/WorkspacePostCard";
 import { WorkspaceTaskModal } from "@/components/workspaces/WorkspaceTaskModal";
 import type { WorkspaceTask, WorkspaceMember } from "@/components/workspaces/types";
+import { usePresence } from "@/components/layout/PresenceProvider";
+import { AvatarStack } from "@/components/projects/AvatarStack";
 
 const TOAST_STYLE = { background: "hsl(var(--b2))", color: "hsl(var(--bc))" };
 const TOAST_ERROR_STYLE = { background: "hsl(var(--b2))", color: "hsl(var(--er))" };
@@ -59,6 +62,7 @@ export default function WorkspaceBoardPage() {
   const [searchResults, setSearchResults] = useState<SearchUser[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
   const [memberBusyId, setMemberBusyId] = useState<string | null>(null);
+  const [memberToRemove, setMemberToRemove] = useState<string | null>(null);
 
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -67,10 +71,18 @@ export default function WorkspaceBoardPage() {
   const [newTitle, setNewTitle] = useState("");
   const [creatingTask, setCreatingTask] = useState(false);
 
+  const [startingMeeting, setStartingMeeting] = useState(false);
+  const [recordingsOpen, setRecordingsOpen] = useState(false);
+  const presenceMap = usePresence();
+
   const reloadWorkspace = useCallback(async () => {
-    const r = await fetch(`/api/workspaces/${workspaceId}`);
-    const d = (await r.json()) as { data?: Workspace; error?: string };
-    if (d.data) setWorkspace(d.data);
+    try {
+      const r = await fetch(`/api/workspaces/${workspaceId}`);
+      const d = (await r.json()) as { data?: Workspace; error?: string };
+      if (d.data) setWorkspace(d.data);
+    } catch {
+      toast.error("Failed to sync workspace", { style: TOAST_ERROR_STYLE });
+    }
   }, [workspaceId]);
 
   useEffect(() => {
@@ -94,6 +106,35 @@ export default function WorkspaceBoardPage() {
       cancelled = true;
     };
   }, [workspaceId]);
+
+  async function startMeeting() {
+    if (!workspace) return;
+    const meetingTab = window.open("about:blank", "_blank");
+    if (!meetingTab) {
+      toast.error("Please allow pop-ups to open meetings", { style: TOAST_ERROR_STYLE });
+      return;
+    }
+    setStartingMeeting(true);
+    try {
+      const res = await fetch("/api/meetings/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          title: `${workspace.name} Board Discussion`, 
+          workspaceId: workspace.id 
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to start meeting");
+      meetingTab.location.href = `/meetings/${data.data.meetingId}`;
+      toast.success("Meeting started", { style: TOAST_STYLE });
+    } catch (e: any) {
+      meetingTab.close();
+      toast.error(e.message, { style: TOAST_ERROR_STYLE });
+    } finally {
+      setStartingMeeting(false);
+    }
+  }
 
   useEffect(() => {
     if (!membersModalOpen) return;
@@ -247,19 +288,50 @@ export default function WorkspaceBoardPage() {
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm gap-2 text-base-content/80 hover:bg-base-300 hover:text-base-content border border-transparent hover:border-base-300"
+          <div className="flex items-center gap-4 flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <button 
+                className="btn btn-sm btn-ghost gap-2"
+                onClick={() => setRecordingsOpen(true)}
+              >
+                <PlayCircle className="w-4 h-4" />
+                Recordings
+              </button>
+              <button 
+                className="btn btn-sm btn-primary gap-2"
+                onClick={startMeeting}
+                disabled={startingMeeting}
+              >
+                {startingMeeting ? <span className="loading loading-spinner loading-xs" /> : <Video className="w-4 h-4" />}
+                Start Meeting
+              </button>
+              <button className="btn btn-sm btn-outline gap-2" onClick={() => setMembersModalOpen(true)}>
+                <Plus className="w-4 h-4" />
+                Manage Members
+              </button>
+            </div>
+            <div 
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-base-300/50 border border-base-300 cursor-pointer hover:bg-base-300 transition-colors"
               onClick={() => {
                 setMembersModalOpen(true);
                 setUserSearch("");
                 setSearchResults([]);
               }}
             >
-              <Users className="w-4 h-4" />
-              {workspace.members.length} members
-            </button>
+              <AvatarStack 
+                users={workspace.members.slice(0, 3).map(m => m.user)} 
+                overflow={Math.max(0, workspace.members.length - 3)}
+                presenceMap={presenceMap}
+              />
+              <div className="flex flex-col">
+                <span className="text-xs font-bold text-base-content leading-none">
+                  {workspace.members.length} members
+                </span>
+                <span className="text-[10px] text-success font-medium leading-none mt-0.5">
+                  {workspace.members.filter(m => presenceMap[m.userId] === "online").length} online
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -310,6 +382,7 @@ export default function WorkspaceBoardPage() {
                   task={task}
                   members={workspace.members}
                   onClick={() => setSelectedTask(task)}
+                  presenceMap={presenceMap}
                 />
               ))}
             </div>
@@ -325,17 +398,6 @@ export default function WorkspaceBoardPage() {
                 Approved, published, and archived — finished or live content.
               </p>
             </div>
-            <button
-              type="button"
-              className="btn btn-outline btn-primary border-base-300 gap-2"
-              onClick={() => {
-                setNewTaskModal("APPROVED");
-                setNewTitle("");
-              }}
-            >
-              <Plus className="w-4 h-4" />
-              Add past post
-            </button>
           </div>
 
           {pastPosts.length === 0 ? (
@@ -352,6 +414,7 @@ export default function WorkspaceBoardPage() {
                   task={task}
                   members={workspace.members}
                   onClick={() => setSelectedTask(task)}
+                  presenceMap={presenceMap}
                 />
               ))}
             </div>
@@ -364,11 +427,27 @@ export default function WorkspaceBoardPage() {
           task={selectedTask}
           members={workspace.members}
           workspaceId={workspaceId}
-          userRole={currentUser.role}
+          userRole={currentUser?.role ?? ""}
           onClose={() => setSelectedTask(null)}
           onUpdate={handleTaskUpdate}
           onDelete={handleTaskDelete}
+          presenceMap={presenceMap}
         />
+      )}
+
+      {recordingsOpen && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-4xl bg-base-100">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="font-bold text-lg">Workspace Recordings</h3>
+              <button className="btn btn-ghost btn-sm btn-circle" onClick={() => setRecordingsOpen(false)}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <MeetingRecordingList workspaceId={workspaceId} />
+          </div>
+          <div className="modal-backdrop" onClick={() => setRecordingsOpen(false)} />
+        </div>
       )}
 
       <dialog className={`modal ${newTaskModal ? "modal-open" : ""}`}>
@@ -445,21 +524,24 @@ export default function WorkspaceBoardPage() {
                 <span className="loading loading-spinner loading-sm text-primary" />
               )}
               {userSearch.trim().length > 0 && !searchBusy && searchResults.length > 0 && (
-                <ul className="menu menu-sm bg-base-100 rounded-box border border-base-300 max-h-40 overflow-y-auto p-1">
+                <ul className="menu menu-sm bg-base-100 rounded-box border border-base-300 max-h-52 overflow-y-auto p-1 shadow-sm divide-y divide-base-200">
                   {searchResults
                     .filter((u) => !memberIds.has(u.id))
                     .map((u) => (
                       <li key={u.id}>
                         <button
                           type="button"
-                          className="hover:bg-base-200 focus:bg-base-200 disabled:opacity-50"
+                          className="flex items-center gap-3 p-2 hover:bg-base-200 focus:bg-base-200 disabled:opacity-50 text-left"
                           disabled={memberBusyId === u.id}
                           onClick={() => void addMember(u.id)}
                         >
-                          <span className="font-medium">{u.name}</span>
-                          <span className="text-xs text-base-content/50">
-                            {ROLE_LABELS[u.role] ?? u.role}
-                          </span>
+                          <UserAvatar user={u} size={28} />
+                          <div className="flex-1 min-w-0">
+                            <span className="font-medium block truncate">{u.name}</span>
+                            <span className="text-[10px] text-base-content/40 uppercase block">
+                              {ROLE_LABELS[u.role] ?? u.role}
+                            </span>
+                          </div>
                         </button>
                       </li>
                     ))}
@@ -475,50 +557,53 @@ export default function WorkspaceBoardPage() {
                 )}
             </div>
           )}
-
           <ul className="space-y-2 max-h-64 overflow-y-auto">
             {workspace.members.map((m) => {
               const isSelf = m.userId === currentUser.id;
               const showLeave = isSelf && workspace.members.length > 1;
               const showRemove = !isSelf && canManageMembers;
+              const isOnline = presenceMap[m.userId] === "online";
+              
               return (
                 <li
                   key={m.userId}
                   className="flex items-center justify-between gap-2 rounded-lg bg-base-100 px-3 py-2 border border-base-300"
                 >
-                  <div className="min-w-0">
-                    <p className="font-medium text-sm text-base-content truncate">{m.user.name}</p>
-                    <p className="text-xs text-base-content/50">
-                      {ROLE_LABELS[m.user.role] ?? m.user.role}
-                    </p>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <UserAvatar 
+                      user={m.user} 
+                      size={32} 
+                      showPresence 
+                      isOnline={isOnline} 
+                    />
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm text-base-content truncate">
+                        {m.user.name} {isSelf && <span className="text-primary font-normal">(You)</span>}
+                      </p>
+                      <p className="text-[10px] text-base-content/40 uppercase tracking-wider">
+                        {ROLE_LABELS[m.user.role] ?? m.user.role}
+                      </p>
+                    </div>
                   </div>
                   <div className="flex-shrink-0 flex gap-1">
                     {showRemove && (
                       <button
                         type="button"
-                        className="btn btn-ghost btn-xs text-error hover:bg-error/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-error disabled:opacity-50"
+                        className="btn btn-ghost btn-xs text-error hover:bg-error/10"
                         disabled={memberBusyId === m.userId}
-                        onClick={() => void removeMember(m.userId)}
+                        onClick={() => setMemberToRemove(m.userId)}
                       >
-                        {memberBusyId === m.userId ? (
-                          <span className="loading loading-spinner loading-xs" />
-                        ) : (
-                          "Remove"
-                        )}
+                        Remove
                       </button>
                     )}
                     {showLeave && (
                       <button
                         type="button"
-                        className="btn btn-ghost btn-xs text-base-content/70 hover:bg-base-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
+                        className="btn btn-ghost btn-xs text-base-content/70 hover:bg-base-300"
                         disabled={memberBusyId === m.userId}
-                        onClick={() => void removeMember(m.userId)}
+                        onClick={() => setMemberToRemove(m.userId)}
                       >
-                        {memberBusyId === m.userId ? (
-                          <span className="loading loading-spinner loading-xs" />
-                        ) : (
-                          "Leave"
-                        )}
+                        Leave
                       </button>
                     )}
                   </div>
@@ -528,6 +613,34 @@ export default function WorkspaceBoardPage() {
           </ul>
         </div>
         <div className="modal-backdrop" onClick={() => setMembersModalOpen(false)} />
+      </dialog>
+
+      {/* Remove Member Confirmation */}
+      <dialog className={`modal ${memberToRemove ? "modal-open" : ""}`}>
+        <div className="modal-box bg-base-200 max-w-sm text-center">
+          <h3 className="font-bold text-lg mb-4">
+            {memberToRemove === currentUser.id ? "Leave Board?" : "Remove Member?"}
+          </h3>
+          <p className="text-sm text-base-content/60 mb-6">
+            {memberToRemove === currentUser.id 
+              ? "Are you sure you want to leave this board? You will need an invite to rejoin." 
+              : "Are you sure you want to remove this person from the board?"}
+          </p>
+          <div className="flex gap-2">
+            <button className="btn btn-ghost flex-1" onClick={() => setMemberToRemove(null)}>Cancel</button>
+            <button 
+              className="btn btn-error flex-1" 
+              onClick={() => {
+                if (memberToRemove) void removeMember(memberToRemove);
+                setMemberToRemove(null);
+              }}
+              disabled={!!memberBusyId}
+            >
+              {memberBusyId ? <span className="loading loading-spinner loading-sm" /> : (memberToRemove === currentUser.id ? "Leave" : "Remove")}
+            </button>
+          </div>
+        </div>
+        <div className="modal-backdrop" onClick={() => setMemberToRemove(null)} />
       </dialog>
     </>
   );

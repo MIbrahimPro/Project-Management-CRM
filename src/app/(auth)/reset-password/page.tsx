@@ -71,7 +71,7 @@ export default function ResetPasswordPage() {
       .catch(() => {
         router.replace("/forgot-password");
       });
-  }, []);
+  }, [router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

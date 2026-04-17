@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { Resend } from "resend";
 import bcrypt from "bcryptjs";
 import { logAction } from "@/lib/audit";
-import { projectManagerCannotModifyUser, requireUserManagement } from "@/lib/admin-user-management";
+import { requireUserManagement } from "@/lib/admin-user-management";
 
 export const dynamic = "force-dynamic";
 
@@ -28,13 +28,6 @@ export async function POST(
   if (user.role === "SUPER_ADMIN" && actorRole !== "SUPER_ADMIN") {
     return NextResponse.json(
       { error: "Cannot reset SUPER_ADMIN password", code: "FORBIDDEN" },
-      { status: 403 }
-    );
-  }
-
-  if (projectManagerCannotModifyUser(actorRole, user.role)) {
-    return NextResponse.json(
-      { error: "Cannot reset administrator password", code: "FORBIDDEN" },
       { status: 403 }
     );
   }

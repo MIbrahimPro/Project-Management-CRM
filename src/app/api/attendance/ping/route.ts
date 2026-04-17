@@ -1,60 +1,104 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
-import { apiHandler, forbidden } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { apiHandler, forbidden } from "@/lib/api-handler";
 import { logAction } from "@/lib/audit";
 import { sendNotification } from "@/lib/notify";
+import { createNormalChatMessage } from "@/lib/chat-send-message";
 
 export const dynamic = "force-dynamic";
 
-const PingSchema = z.object({
-  targetUserId: z.string().min(1),
-});
-
-const MANAGER_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"];
-
 /**
- * POST /api/attendance/ping — PM sends an activity check to a user.
- * Creates an AwayPing and sends a push notification.
+ * POST /api/attendance/ping
+ * Manager pings an employee to confirm they are active.
  */
 export const POST = apiHandler(async (req: NextRequest) => {
-  const userId = req.headers.get("x-user-id") ?? forbidden();
-  const role = req.headers.get("x-user-role") ?? "";
+  const senderId = req.headers.get("x-user-id") ?? forbidden();
+  const userRole = req.headers.get("x-user-role") ?? "";
+  
+  if (!["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(userRole)) forbidden();
 
-  if (!MANAGER_ROLES.includes(role)) {
-    return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
+  const { targetUserId } = await req.json();
+  if (!targetUserId) {
+    return NextResponse.json({ error: "Missing targetUserId", code: "BAD_REQUEST" }, { status: 400 });
   }
-
-  const body = PingSchema.parse(await req.json());
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const checkIn = await prisma.checkIn.findUnique({
-    where: { userId_date: { userId: body.targetUserId, date: today } },
-    select: { id: true, checkedOutAt: true },
+  // Check if already has an unanswered ping today
+  const existingPing = await prisma.attendancePing.findFirst({
+    where: {
+      checkIn: { userId: targetUserId, date: today },
+      status: "PENDING"
+    }
   });
 
-  if (!checkIn || checkIn.checkedOutAt) {
+  if (existingPing) {
+    return NextResponse.json({ error: "A ping is already pending for this user", code: "CONFLICT" }, { status: 409 });
+  }
+
+  // Get current active check-in
+  const checkIn = await prisma.checkIn.findUnique({
+    where: { userId_date: { userId: targetUserId, date: today } }
+  });
+
+  if (!checkIn) {
     return NextResponse.json({ error: "User is not checked in today", code: "NOT_FOUND" }, { status: 404 });
   }
 
-  const ping = await prisma.awayPing.create({
+  if (checkIn.checkedOutAt) {
+    return NextResponse.json({ error: "User has already checked out", code: "CONFLICT" }, { status: 409 });
+  }
+
+  // Create ping
+  const ping = await prisma.attendancePing.create({
     data: {
       checkInId: checkIn.id,
-      sentAt: new Date(),
-    },
+      senderId,
+      status: "PENDING"
+    }
   });
 
+  // 1. Notification
   await sendNotification(
-    body.targetUserId,
-    "AWAY_CHECK",
+    targetUserId,
+    "GENERAL",
     "Activity Check",
-    "Your manager is checking if you're active. Click to confirm.",
-    `/api/attendance/confirm-active?pingId=${ping.id}`,
+    "Your manager is checking if you're active. Please click to confirm.",
+    `/api/attendance/confirm-active?pingId=${ping.id}`
   );
 
-  await logAction(userId, "PM_PING", "User", body.targetUserId);
+  // 2. System message in DM
+  // Find or create DM
+  let room = await prisma.chatRoom.findFirst({
+    where: {
+      type: "general_dm",
+      members: { every: { userId: { in: [senderId, targetUserId] } } },
+      AND: { members: { some: { userId: senderId } } }
+    }
+  });
 
-  return NextResponse.json({ data: { pingId: ping.id } });
+  if (!room) {
+    room = await prisma.chatRoom.create({
+      data: {
+        type: "general_dm",
+        members: {
+          create: [
+            { userId: senderId, role: "member" },
+            { userId: targetUserId, role: "member" }
+          ]
+        }
+      }
+    });
+  }
+
+  await createNormalChatMessage({
+    roomId: room.id,
+    senderId: senderId,
+    content: `[ACTIVITY CHECK] Please confirm you are active by clicking the notification or visiting the attendance page.`,
+  });
+
+  await logAction(senderId, "ATTENDANCE_PING_SENT", "AttendancePing", ping.id, { targetUserId });
+
+  return NextResponse.json({ data: ping });
 });

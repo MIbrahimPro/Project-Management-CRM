@@ -10,6 +10,7 @@ import { DashboardClientStrip } from "@/components/dashboard/DashboardClientStri
 import { StatsRow } from "@/components/dashboard/StatsRow";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { RoleWidgets } from "@/components/dashboard/RoleWidgets";
+import { DashboardCharts } from "@/components/dashboard/DashboardCharts";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,8 @@ export default async function DashboardPage() {
       </div>
 
       <StatsRow stats={data.stats} />
+
+      {data.chartData && <DashboardCharts data={data.chartData} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
         <RecentActivity items={data.recentActivity} />

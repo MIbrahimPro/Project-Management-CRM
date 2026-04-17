@@ -91,8 +91,29 @@ export const POST = apiHandler(
 
     const member = await prisma.chatRoomMember.findUnique({
       where: { roomId_userId: { roomId, userId } },
+      include: {
+        room: {
+          select: {
+            type: true,
+            adminsOnlyPosting: true,
+          },
+        },
+      },
     });
-    if (!member) forbidden();
+    if (!member) {
+      forbidden();
+      throw new Error("Forbidden");
+    }
+
+    if (member.room.type === "custom_group" && member.room.adminsOnlyPosting) {
+      const isGlobalManager = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(req.headers.get("x-user-role") ?? "");
+      if (!isGlobalManager && !member.isGroupAdmin) {
+        return NextResponse.json(
+          { error: "Only admins can post in this group" },
+          { status: 403 }
+        );
+      }
+    }
 
     const body = PostMessageSchema.parse(await req.json());
     const content = body.content?.trim() ?? "";

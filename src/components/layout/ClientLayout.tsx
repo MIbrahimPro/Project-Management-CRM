@@ -4,7 +4,10 @@ import { useState, useEffect, useCallback, createContext, useContext } from "rea
 import { Sidebar } from "./Sidebar";
 import { Navbar } from "./Navbar";
 import { AISidebar } from "@/components/ai/AISidebar";
+import { AttendanceOvertimeModal } from "@/components/attendance/AttendanceOvertimeModal";
+import { useSocket } from "@/hooks/useSocket";
 import { FetchInterceptor } from "@/components/auth/FetchInterceptor";
+import { PresenceProvider } from "./PresenceProvider";
 import type { SidebarItem } from "@/config/sidebar";
 
 interface SidebarOverrideContextValue {
@@ -35,6 +38,21 @@ export function ClientLayout({ user, sidebarItems, children }: ClientLayoutProps
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [sidebarOverride, setSidebarOverride] = useState<SidebarItem[] | null>(null);
+  
+  // Overtime Modal State
+  const [overtimeCheckInId, setOvertimeCheckInId] = useState<string | null>(null);
+  
+  const notifSocket = useSocket("/notifications");
+
+  useEffect(() => {
+    if (!notifSocket) return;
+    notifSocket.on("shift_complete", (data: { checkInId: string }) => {
+      setOvertimeCheckInId(data.checkInId);
+    });
+    return () => {
+      notifSocket.off("shift_complete");
+    };
+  }, [notifSocket]);
 
   const ATTENDANCE_ROLES = ["ADMIN", "PROJECT_MANAGER", "DEVELOPER", "DESIGNER", "HR", "ACCOUNTANT", "SALES"];
 
@@ -75,6 +93,7 @@ export function ClientLayout({ user, sidebarItems, children }: ClientLayoutProps
   const activeSidebarItems = sidebarOverride ?? sidebarItems;
 
   return (
+    <PresenceProvider>
     <SidebarOverrideContext.Provider value={{ setOverride: setSidebarOverride }}>
     <FetchInterceptor />
     <div className="flex h-screen overflow-hidden bg-base-100">
@@ -123,7 +142,14 @@ export function ClientLayout({ user, sidebarItems, children }: ClientLayoutProps
 
       {/* AI Assistant floating sidebar */}
       <AISidebar userRole={user.role} />
+      {/* Overtime Popup */}
+      <AttendanceOvertimeModal 
+        isOpen={!!overtimeCheckInId} 
+        onClose={() => setOvertimeCheckInId(null)} 
+        checkInId={overtimeCheckInId || ""} 
+      />
     </div>
     </SidebarOverrideContext.Provider>
+    </PresenceProvider>
   );
 }

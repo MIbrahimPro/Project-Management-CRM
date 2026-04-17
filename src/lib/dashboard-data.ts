@@ -16,6 +16,7 @@ const PROJECT_LIST_INCLUDE = {
  * Loads dashboard payloads for the authenticated user by role (single DB round-trip batch per section).
  */
 export async function fetchDashboardData(userId: string, role: UserRole) {
+  const chartData = await getChartData(role);
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const weekStart = new Date(today);
@@ -39,7 +40,7 @@ export async function fetchDashboardData(userId: string, role: UserRole) {
     },
   });
 
-  if (role === "SUPER_ADMIN" || role === "ADMIN") {
+  if (role === "SUPER_ADMIN" || role === "ADMIN" || role === "PROJECT_MANAGER") {
     const [
       activeProjects,
       totalClients,
@@ -90,68 +91,7 @@ export async function fetchDashboardData(userId: string, role: UserRole) {
       projects,
       pendingClientRequests,
       pendingQuestions,
-    };
-  }
-
-  if (role === "PROJECT_MANAGER") {
-    const [myProjects, pendingRequests, pendingQuestionCount, unreadNotifications, overdueTasks] =
-      await Promise.all([
-        prisma.project.count({
-          where: { members: { some: { userId } }, status: "ACTIVE" },
-        }),
-        prisma.clientProjectRequest.count({ where: { status: "PENDING" } }),
-        prisma.projectQuestion.count({ where: { isApproved: false } }),
-        prisma.notification.count({ where: { userId, isRead: false } }),
-        prisma.task.count({
-          where: {
-            assignees: { some: { userId } },
-            status: { notIn: ["DONE", "CANCELLED"] },
-            dueDate: { lt: now },
-          },
-        }),
-      ]);
-
-    const [projects, pendingClientRequests, pendingQuestions] = await Promise.all([
-      prisma.project.findMany({
-        where: { members: { some: { userId } }, status: { not: "CANCELLED" } },
-        include: PROJECT_LIST_INCLUDE,
-        orderBy: { updatedAt: "desc" },
-        take: 6,
-      }),
-      prisma.clientProjectRequest.findMany({
-        where: { status: "PENDING" },
-        include: { project: { select: { title: true } } },
-        orderBy: { createdAt: "desc" },
-        take: 5,
-      }),
-      prisma.projectQuestion.findMany({
-        where: { isApproved: false },
-        include: {
-          project: { select: { title: true } },
-          milestone: { select: { title: true } },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 5,
-      }),
-    ]);
-
-    return {
-      stats: [
-        { label: "My Projects", value: myProjects, icon: "FolderKanban" },
-        { label: "Pending Requests", value: pendingRequests, icon: "Inbox" },
-        { label: "Pending Questions", value: pendingQuestionCount, icon: "HelpCircle" },
-        { label: "Unread Notifications", value: unreadNotifications, icon: "Bell" },
-        {
-          label: "Overdue Tasks",
-          value: overdueTasks,
-          icon: "AlertTriangle",
-          trend: overdueTasks > 0 ? "Needs attention" : undefined,
-        },
-      ],
-      recentActivity,
-      projects,
-      pendingClientRequests,
-      pendingQuestions,
+      chartData,
     };
   }
 
@@ -373,6 +313,61 @@ export async function fetchDashboardData(userId: string, role: UserRole) {
   }
 
   return forbidden();
+}
+
+async function getChartData(role: UserRole) {
+  if (!["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(role)) return null;
+
+  const now = new Date();
+  const last6Months = Array.from({ length: 6 }).map((_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    return {
+      month: d.toLocaleString("default", { month: "short" }),
+      year: d.getFullYear(),
+      date: d,
+    };
+  }).reverse();
+
+  // 1. Monthly Revenue
+  const revenueData = await Promise.all(
+    last6Months.map(async (m) => {
+      const start = m.date;
+      const end = new Date(m.year, m.date.getMonth() + 1, 0);
+      const res = await prisma.accountEntry.aggregate({
+        where: { type: "INCOME", date: { gte: start, lte: end }, isVoid: false },
+        _sum: { amountUsd: true },
+      });
+      return {
+        name: m.month,
+        revenue: Number(res._sum.amountUsd ?? 0),
+      };
+    })
+  );
+
+  // 2. Task Completion
+  const tasksByStatus = await prisma.task.groupBy({
+    by: ["status"],
+    _count: true,
+  });
+
+  // 3. Project Status
+  const projectsByStatus = await prisma.project.groupBy({
+    by: ["status"],
+    _count: true,
+  });
+
+  // 4. Hiring Pipeline
+  const candidatesByStatus = await prisma.candidate.groupBy({
+    by: ["status"],
+    _count: true,
+  });
+
+  return {
+    revenue: revenueData,
+    tasks: tasksByStatus.map((t) => ({ name: t.status.replace(/_/g, " "), value: t._count })),
+    projects: projectsByStatus.map((p) => ({ name: p.status.replace(/_/g, " "), value: p._count })),
+    hiring: candidatesByStatus.map((c) => ({ name: c.status.replace(/_/g, " "), value: c._count })),
+  };
 }
 
 export type DashboardData = Awaited<ReturnType<typeof fetchDashboardData>>;

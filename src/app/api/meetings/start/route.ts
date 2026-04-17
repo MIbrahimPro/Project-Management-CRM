@@ -34,6 +34,8 @@ const MESSAGE_INCLUDE = {
 const bodySchema = z.object({
   title: z.string().min(1).max(200),
   projectId: z.string().optional(),
+  workspaceId: z.string().optional(),
+  taskId: z.string().optional(),
   chatRoomId: z.string().optional(),
 });
 
@@ -47,20 +49,30 @@ export const POST = apiHandler(async (req: NextRequest) => {
   // Only team/managers can start meetings — not clients
   if (userRole === "CLIENT") forbidden();
 
-  // Verify project access if projectId provided
+  // Verify access based on context
   if (body.projectId) {
     const project = await prisma.project.findUnique({
       where: { id: body.projectId },
-      select: {
-        id: true,
-        clientId: true,
-        members: { select: { userId: true } },
-      },
+      select: { members: { select: { userId: true } } },
     });
-    if (!project) return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
-    const canAccess =
-      MANAGER_ROLES.includes(userRole) ||
-      project.members.some((m) => m.userId === userId);
+    if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    const canAccess = MANAGER_ROLES.includes(userRole) || project.members.some(m => m.userId === userId);
+    if (!canAccess) forbidden();
+  } else if (body.workspaceId) {
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: body.workspaceId },
+      select: { members: { select: { userId: true } } },
+    });
+    if (!workspace) return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+    const canAccess = MANAGER_ROLES.includes(userRole) || workspace.members.some(m => m.userId === userId);
+    if (!canAccess) forbidden();
+  } else if (body.taskId) {
+    const task = await prisma.task.findUnique({
+      where: { id: body.taskId },
+      select: { assignees: { select: { userId: true } }, createdById: true },
+    });
+    if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    const canAccess = MANAGER_ROLES.includes(userRole) || task.createdById === userId || task.assignees.some(m => m.userId === userId);
     if (!canAccess) forbidden();
   }
 
@@ -81,17 +93,13 @@ export const POST = apiHandler(async (req: NextRequest) => {
       },
       select: { id: true },
     });
-
-    const fallbackRoom = teamRoom ?? (await prisma.chatRoom.findFirst({
-      where: {
-        projectId: body.projectId,
-        type: "project_client_manager",
-        members: { some: { userId } },
-      },
+    chatRoomId = teamRoom?.id ?? null;
+  } else if (body.workspaceId) {
+    const wsRoom = await prisma.chatRoom.findFirst({
+      where: { workspaceId: body.workspaceId, members: { some: { userId } } },
       select: { id: true },
-    }));
-
-    chatRoomId = fallbackRoom?.id ?? null;
+    });
+    chatRoomId = wsRoom?.id ?? null;
   }
 
   const jitsiRoomId = `devrolin-${nanoid(12)}`;
@@ -109,6 +117,8 @@ export const POST = apiHandler(async (req: NextRequest) => {
       title: body.title,
       jitsiRoomId,
       projectId: body.projectId ?? null,
+      workspaceId: body.workspaceId ?? null,
+      taskId: body.taskId ?? null,
       chatRoomId,
       createdById: userId,
     },
@@ -144,6 +154,8 @@ export const POST = apiHandler(async (req: NextRequest) => {
   await logAction(userId, "MEETING_STARTED", "Meeting", meeting.id, {
     title: body.title,
     projectId: body.projectId ?? null,
+    workspaceId: body.workspaceId ?? null,
+    taskId: body.taskId ?? null,
     chatRoomId,
   });
 

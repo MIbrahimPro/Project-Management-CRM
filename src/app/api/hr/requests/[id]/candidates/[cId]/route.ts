@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { apiHandler, forbidden } from "@/lib/api-handler";
 import { logAction } from "@/lib/audit";
+import { sendNotification } from "@/lib/notify";
 
 export const dynamic = "force-dynamic";
 
@@ -10,9 +11,10 @@ const HR_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "HR"];
 
 const patchSchema = z.object({
   status: z.enum([
-    "APPLIED", "UNDER_REVIEW", "AI_RECOMMENDED", "HR_RECOMMENDED",
-    "SHORTLISTED", "INTERVIEW_SCHEDULED", "HIRED", "REJECTED",
+    "APPLIED", "UNDER_REVIEW", "SHORTLISTED", 
+    "INTERVIEW_SCHEDULED", "HIRED", "REJECTED",
   ]).optional(),
+  isAiRecommended: z.boolean().optional(),
   isHrRecommended: z.boolean().optional(),
   internalNotes: z.string().optional(),
   interviewAt: z.string().datetime().optional().nullable(),
@@ -31,16 +33,14 @@ export const PATCH = apiHandler(async (req: NextRequest, ctx) => {
 
   const candidate = await prisma.candidate.findFirst({
     where: { id: candidateId, requestId },
-    select: { id: true },
+    select: { id: true, name: true },
   });
   if (!candidate) return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
 
   const updateData: Record<string, unknown> = {};
   if (body.status !== undefined) updateData.status = body.status;
-  if (body.isHrRecommended !== undefined) {
-    updateData.isHrRecommended = body.isHrRecommended;
-    if (body.isHrRecommended) updateData.status = "HR_RECOMMENDED";
-  }
+  if (body.isAiRecommended !== undefined) updateData.isAiRecommended = body.isAiRecommended;
+  if (body.isHrRecommended !== undefined) updateData.isHrRecommended = body.isHrRecommended;
   if (body.internalNotes !== undefined) updateData.internalNotes = body.internalNotes;
   if (body.interviewAt !== undefined) {
     updateData.interviewAt = body.interviewAt ? new Date(body.interviewAt) : null;
@@ -53,6 +53,7 @@ export const PATCH = apiHandler(async (req: NextRequest, ctx) => {
     select: {
       id: true,
       status: true,
+      isAiRecommended: true,
       isHrRecommended: true,
       internalNotes: true,
       interviewAt: true,
@@ -60,5 +61,27 @@ export const PATCH = apiHandler(async (req: NextRequest, ctx) => {
   });
 
   await logAction(userId, "CANDIDATE_UPDATED", "Candidate", candidateId, { changes: Object.keys(updateData) });
+
+  if (body.status === "HIRED") {
+    // Notify all HR and Admins to upload contract
+    const hrUsers = await prisma.user.findMany({
+      where: {
+        role: { in: ["SUPER_ADMIN", "ADMIN", "HR"] },
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    
+    for (const hr of hrUsers) {
+      await sendNotification(
+        hr.id,
+        "HIRING_UPDATE",
+        "Action Required: Contract Upload",
+        `Candidate ${candidate.name} has been hired. Please upload their contract.`,
+        `/contracts`
+      );
+    }
+  }
+
   return NextResponse.json({ data: updated });
 });

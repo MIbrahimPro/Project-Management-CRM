@@ -72,6 +72,9 @@ export const PATCH = apiHandler(async (req: NextRequest, ctx) => {
       );
     }
     updateData.status = body.status;
+    if (body.status === "PUBLISHED" && !existing.postedAt) {
+      updateData.postedAt = new Date();
+    }
   }
   if (body.assigneeIds !== undefined) updateData.assigneeIds = body.assigneeIds;
   if (body.postedAt !== undefined) {

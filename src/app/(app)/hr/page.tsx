@@ -56,10 +56,13 @@ const ROLE_LABELS: Record<string, string> = {
   CLIENT: "Client",
 };
 
+import { HrDashboardCharts } from "@/components/dashboard/HrDashboardCharts";
+
 export default function HRPage() {
   const router = useRouter();
   const [requests, setRequests] = useState<HiringRequest[]>([]);
   const [alerts, setAlerts] = useState<AttendanceAlert[]>([]);
+  const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   // New request modal
@@ -72,10 +75,12 @@ export default function HRPage() {
     Promise.all([
       fetch("/api/hr/requests").then((r) => r.json()),
       fetch("/api/hr/attendance-alerts").then((r) => r.json()),
+      fetch("/api/hr/stats").then((r) => r.json()),
     ])
-      .then(([reqRes, alertRes]: [{ data: HiringRequest[] }, { data: AttendanceAlert[] }]) => {
+      .then(([reqRes, alertRes, statsRes]: [any, any, any]) => {
         setRequests(reqRes.data ?? []);
         setAlerts(alertRes.data ?? []);
+        setStats(statsRes.data ?? null);
       })
       .catch(() => toast.error("Failed to load HR data", { style: TOAST_ERROR_STYLE }))
       .finally(() => setLoading(false));
@@ -153,6 +158,9 @@ export default function HRPage() {
             </div>
           ))}
         </div>
+
+        {/* Charts Section */}
+        <HrDashboardCharts data={stats} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Hiring Requests List */}

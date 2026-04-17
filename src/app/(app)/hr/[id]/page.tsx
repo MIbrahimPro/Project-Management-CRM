@@ -3,17 +3,8 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import {
-  Bot,
-  Calendar,
-  Check,
-  ChevronDown,
-  Copy,
-  Download,
-  ExternalLink,
-  FileText,
-  Globe,
-  StickyNote,
-  X,
+  Bot, Calendar, Check, ChevronDown, Copy, Download,
+  ExternalLink, FileText, Globe, StickyNote, X, Video, UserPlus, Clock
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -22,6 +13,7 @@ const TOAST_ERROR_STYLE = { background: "hsl(var(--b2))", color: "hsl(var(--er))
 
 type Question = { id: string; text: string; required: boolean; order: number };
 type CandidateAnswer = { answer: string; question: { text: string } };
+type Interview = { id: string; startTime: string; endTime: string; roomId: string | null; status: string };
 type Candidate = {
   id: string;
   name: string;
@@ -35,6 +27,7 @@ type Candidate = {
   internalNotes: string | null;
   cvUrl: string | null;
   answers: CandidateAnswer[];
+  interviews: Interview[];
 };
 type HiringRequest = {
   id: string;
@@ -55,17 +48,16 @@ type HiringRequest = {
 };
 
 type AIRanking = { candidateId: string; name: string; score: number; reasoning: string };
+type UserMin = { id: string; name: string };
 
 const STATUS_OPTS = [
-  "APPLIED", "UNDER_REVIEW", "AI_RECOMMENDED", "HR_RECOMMENDED",
-  "SHORTLISTED", "INTERVIEW_SCHEDULED", "HIRED", "REJECTED",
+  "APPLIED", "UNDER_REVIEW", "SHORTLISTED", 
+  "INTERVIEW_SCHEDULED", "HIRED", "REJECTED",
 ] as const;
 
 const STATUS_BADGE: Record<string, string> = {
   APPLIED: "badge-neutral",
   UNDER_REVIEW: "badge-info",
-  AI_RECOMMENDED: "badge-secondary",
-  HR_RECOMMENDED: "badge-primary",
   SHORTLISTED: "badge-success",
   INTERVIEW_SCHEDULED: "badge-warning",
   HIRED: "badge-success",
@@ -101,6 +93,23 @@ export default function HiringRequestPage() {
   // CV modal
   const [cvModalUrl, setCvModalUrl] = useState<string | null>(null);
 
+  // Scheduling Modal
+  const [scheduleModalCand, setScheduleModalCand] = useState<Candidate | null>(null);
+  const [interviewDate, setInterviewDate] = useState("");
+  const [interviewTime, setInterviewTime] = useState("");
+  const [interviewerIds, setInterviewerIds] = useState<string[]>([]);
+  const [interviewersList, setInterviewersList] = useState<UserMin[]>([]);
+  const [scheduling, setScheduling] = useState(false);
+
+  // Hiring Modal
+  const [hireModalCand, setHireModalCand] = useState<Candidate | null>(null);
+  const [hireSalary, setHireSalary] = useState("");
+  const [hireWorkMode, setHireWorkMode] = useState<"ONSITE" | "REMOTE" | "HYBRID">("REMOTE");
+  const [hireMemberSince, setHireMemberSince] = useState(new Date().toISOString().slice(0, 10));
+  const [hiring, setHiring] = useState(false);
+
+  const [startingMeeting, setStartingMeeting] = useState<string | null>(null);
+
   useEffect(() => {
     fetch(`/api/hr/requests/${requestId}`)
       .then((r) => r.json())
@@ -112,12 +121,23 @@ export default function HiringRequestPage() {
       .finally(() => setLoading(false));
   }, [requestId]);
 
-  async function updateCandidateStatus(candidateId: string, status: string) {
+  useEffect(() => {
+    if (scheduleModalCand && interviewersList.length === 0) {
+      fetch("/api/users/team-members").then(r => r.json()).then(d => {
+        if (d.data) setInterviewersList(d.data);
+      });
+    }
+  }, [scheduleModalCand, interviewersList.length]);
+
+  async function updateCandidateStatus(candidateId: string, status: string, isHrRecommended?: boolean) {
     try {
+      const bodyPayload: any = { status };
+      if (isHrRecommended !== undefined) bodyPayload.isHrRecommended = isHrRecommended;
+
       const res = await fetch(`/api/hr/requests/${requestId}/candidates/${candidateId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify(bodyPayload),
       });
       if (!res.ok) throw new Error("Failed");
       const data = (await res.json()) as { data: Partial<Candidate> };
@@ -134,9 +154,9 @@ export default function HiringRequestPage() {
       if (selectedCandidate?.id === candidateId) {
         setSelectedCandidate((prev) => (prev ? { ...prev, ...data.data } : prev));
       }
-      toast.success("Status updated", { style: TOAST_STYLE });
+      toast.success("Candidate updated", { style: TOAST_STYLE });
     } catch {
-      toast.error("Failed to update status", { style: TOAST_ERROR_STYLE });
+      toast.error("Failed to update candidate", { style: TOAST_ERROR_STYLE });
     }
   }
 
@@ -210,6 +230,104 @@ export default function HiringRequestPage() {
       toast.error(e instanceof Error ? e.message : "AI failed", { style: TOAST_ERROR_STYLE });
     } finally {
       setAiLoading(false);
+    }
+  }
+
+  async function handleScheduleInterview(e: React.FormEvent) {
+    e.preventDefault();
+    if (!scheduleModalCand || interviewerIds.length === 0) return;
+    setScheduling(true);
+    try {
+      const start = new Date(`${interviewDate}T${interviewTime}`);
+      const end = new Date(start.getTime() + 60 * 60 * 1000); // 1 hour
+      const res = await fetch("/api/hr/interviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidateId: scheduleModalCand.id,
+          startTime: start.toISOString(),
+          endTime: end.toISOString(),
+          interviewerIds
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Scheduling failed");
+
+      // Reload request to get updated interviews
+      const updated = await fetch(`/api/hr/requests/${requestId}`).then((r) => r.json()) as { data?: HiringRequest };
+      if (updated.data) {
+        setRequest(updated.data);
+        if (selectedCandidate?.id === scheduleModalCand.id) {
+          setSelectedCandidate(updated.data.candidates.find(c => c.id === scheduleModalCand.id) || null);
+        }
+      }
+      setScheduleModalCand(null);
+      toast.success("Interview scheduled and email sent!", { style: TOAST_STYLE });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error scheduling", { style: TOAST_ERROR_STYLE });
+    } finally {
+      setScheduling(false);
+    }
+  }
+
+  async function handleStartMeeting(interviewId: string) {
+    setStartingMeeting(interviewId);
+    try {
+      const res = await fetch(`/api/hr/interviews/${interviewId}/start`, {
+        method: "POST"
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to start meeting");
+      toast.success("Meeting started, candidate notified", { style: TOAST_STYLE });
+      // Open in new tab
+      window.open(`/meet/${data.data.roomId}`, "_blank");
+      
+      // Reload request to update roomId
+      const updated = await fetch(`/api/hr/requests/${requestId}`).then((r) => r.json()) as { data?: HiringRequest };
+      if (updated.data) {
+        setRequest(updated.data);
+        if (selectedCandidate) {
+          setSelectedCandidate(updated.data.candidates.find(c => c.id === selectedCandidate.id) || null);
+        }
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error", { style: TOAST_ERROR_STYLE });
+    } finally {
+      setStartingMeeting(null);
+    }
+  }
+
+  async function handleHire(e: React.FormEvent) {
+    e.preventDefault();
+    if (!hireModalCand) return;
+    setHiring(true);
+    try {
+      const res = await fetch(`/api/hr/requests/${requestId}/candidates/${hireModalCand.id}/hire`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          salary: hireSalary,
+          workMode: hireWorkMode,
+          memberSince: new Date(hireMemberSince).toISOString()
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Hiring failed");
+
+      // Reload
+      const updated = await fetch(`/api/hr/requests/${requestId}`).then((r) => r.json()) as { data?: HiringRequest };
+      if (updated.data) {
+        setRequest(updated.data);
+        if (selectedCandidate?.id === hireModalCand.id) {
+          setSelectedCandidate(updated.data.candidates.find(c => c.id === hireModalCand.id) || null);
+        }
+      }
+      setHireModalCand(null);
+      toast.success("Candidate Hired! Welcome email sent.", { style: TOAST_STYLE });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error hiring", { style: TOAST_ERROR_STYLE });
+    } finally {
+      setHiring(false);
     }
   }
 
@@ -357,6 +475,9 @@ export default function HiringRequestPage() {
                           {c.isAiRecommended && (
                             <Bot className="w-3 h-3 text-secondary flex-shrink-0" />
                           )}
+                          {c.isHrRecommended && (
+                            <span className="text-xs badge badge-primary badge-sm">HR Rec</span>
+                          )}
                           {ranking && (
                             <span className="text-xs badge badge-secondary badge-sm">{ranking.score}/10</span>
                           )}
@@ -434,16 +555,76 @@ export default function HiringRequestPage() {
                         ))}
                       </ul>
                     </div>
+                    {/* HR Recommended toggle */}
+                    <button
+                      className={`btn btn-xs gap-1 ${selectedCandidate.isHrRecommended ? "btn-primary" : "btn-outline"}`}
+                      onClick={() => void updateCandidateStatus(selectedCandidate.id, selectedCandidate.status, !selectedCandidate.isHrRecommended)}
+                    >
+                      <Check className="w-3 h-3" />
+                      HR Rec
+                    </button>
                   </div>
                 </div>
 
-                {/* Interview date */}
-                {selectedCandidate.interviewAt && (
-                  <div className="flex items-center gap-2 text-sm text-base-content/70">
-                    <Calendar className="w-4 h-4 text-warning" />
-                    Interview: {new Date(selectedCandidate.interviewAt).toLocaleString()}
+                {/* Interviews */}
+                {selectedCandidate.interviews && selectedCandidate.interviews.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-semibold text-base-content flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5" />
+                      Interviews
+                    </h4>
+                    {selectedCandidate.interviews.map(inv => {
+                      const start = new Date(inv.startTime);
+                      const isComingUp = start.getTime() - Date.now() < 30 * 60 * 1000 && start.getTime() > Date.now() - 60 * 60 * 1000;
+                      return (
+                        <div key={inv.id} className="bg-base-300 rounded-lg p-3 flex justify-between items-center">
+                          <div className="text-sm text-base-content/80">
+                            {start.toLocaleString()} - {inv.status}
+                          </div>
+                          <div className="flex gap-2">
+                            {inv.roomId && (
+                              <button className="btn btn-xs btn-outline gap-1" onClick={() => window.open(`/meet/${inv.roomId}`, "_blank")}>
+                                <Video className="w-3 h-3" /> Join Room
+                              </button>
+                            )}
+                            {!inv.roomId && isComingUp && (
+                              <button 
+                                className="btn btn-xs btn-primary gap-1"
+                                onClick={() => void handleStartMeeting(inv.id)}
+                                disabled={startingMeeting === inv.id}
+                              >
+                                {startingMeeting === inv.id ? <span className="loading loading-spinner loading-xs" /> : <Video className="w-3 h-3" />}
+                                Start Meeting
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
+
+                {/* Action Buttons Row */}
+                <div className="flex gap-2 flex-wrap">
+                  <button 
+                    className="btn btn-sm btn-outline gap-1"
+                    onClick={() => {
+                      setScheduleModalCand(selectedCandidate);
+                    }}
+                  >
+                    <Clock className="w-4 h-4" /> Schedule Interview
+                  </button>
+                  {selectedCandidate.status === "SHORTLISTED" || selectedCandidate.status === "INTERVIEW_SCHEDULED" ? (
+                    <button 
+                      className="btn btn-sm btn-primary gap-1"
+                      onClick={() => setHireModalCand(selectedCandidate)}
+                    >
+                      <UserPlus className="w-4 h-4" /> Hire Candidate
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="divider my-0"></div>
 
                 {/* Answers */}
                 {selectedCandidate.answers.length > 0 && (
@@ -541,6 +722,82 @@ export default function HiringRequestPage() {
             </div>
             <iframe src={cvModalUrl} className="w-full h-[calc(100%-2.5rem)]" title="CV Preview" />
           </div>
+        </div>
+      )}
+
+      {/* Schedule Modal */}
+      {scheduleModalCand && (
+        <div className="modal modal-open">
+          <div className="modal-box">
+            <h3 className="font-bold text-lg mb-4">Schedule Interview for {scheduleModalCand.name}</h3>
+            <form onSubmit={(e) => void handleScheduleInterview(e)} className="space-y-4">
+              <div className="flex gap-4">
+                <div className="form-control flex-1">
+                  <label className="label"><span className="label-text">Date</span></label>
+                  <input type="date" className="input input-bordered" required value={interviewDate} onChange={e => setInterviewDate(e.target.value)} />
+                </div>
+                <div className="form-control flex-1">
+                  <label className="label"><span className="label-text">Time</span></label>
+                  <input type="time" className="input input-bordered" required value={interviewTime} onChange={e => setInterviewTime(e.target.value)} />
+                </div>
+              </div>
+              <div className="form-control">
+                <label className="label"><span className="label-text">Interviewers</span></label>
+                <select multiple className="select select-bordered h-32" required value={interviewerIds} onChange={e => setInterviewerIds(Array.from(e.target.selectedOptions, o => o.value))}>
+                  {interviewersList.map(u => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+                <label className="label"><span className="label-text-alt text-base-content/50">Hold Ctrl/Cmd to select multiple</span></label>
+              </div>
+              <div className="modal-action">
+                <button type="button" className="btn btn-ghost" onClick={() => setScheduleModalCand(null)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={scheduling}>
+                  {scheduling && <span className="loading loading-spinner loading-xs" />}
+                  Schedule & Email Candidate
+                </button>
+              </div>
+            </form>
+          </div>
+          <div className="modal-backdrop" onClick={() => setScheduleModalCand(null)}></div>
+        </div>
+      )}
+
+      {/* Hire Modal */}
+      {hireModalCand && (
+        <div className="modal modal-open">
+          <div className="modal-box">
+            <h3 className="font-bold text-lg mb-4">Hire {hireModalCand.name}</h3>
+            <form onSubmit={(e) => void handleHire(e)} className="space-y-4">
+              <div className="form-control">
+                <label className="label"><span className="label-text">Salary</span></label>
+                <input type="text" placeholder="e.g. $5,000/mo" className="input input-bordered" required value={hireSalary} onChange={e => setHireSalary(e.target.value)} />
+              </div>
+              <div className="form-control">
+                <label className="label"><span className="label-text">Work Mode</span></label>
+                <select className="select select-bordered" required value={hireWorkMode} onChange={e => setHireWorkMode(e.target.value as any)}>
+                  <option value="ONSITE">Onsite</option>
+                  <option value="REMOTE">Remote</option>
+                  <option value="HYBRID">Hybrid</option>
+                </select>
+              </div>
+              <div className="form-control">
+                <label className="label"><span className="label-text">Member Since</span></label>
+                <input type="date" className="input input-bordered" required value={hireMemberSince} onChange={e => setHireMemberSince(e.target.value)} />
+              </div>
+              <div className="bg-success/10 border border-success/20 p-3 rounded-lg mt-2">
+                <p className="text-sm text-success font-medium">This will create a new account and send a welcome email containing their secure setup link.</p>
+              </div>
+              <div className="modal-action">
+                <button type="button" className="btn btn-ghost" onClick={() => setHireModalCand(null)}>Cancel</button>
+                <button type="submit" className="btn btn-success text-white" disabled={hiring}>
+                  {hiring && <span className="loading loading-spinner loading-xs" />}
+                  Confirm Hire & Email
+                </button>
+              </div>
+            </form>
+          </div>
+          <div className="modal-backdrop" onClick={() => setHireModalCand(null)}></div>
         </div>
       )}
     </div>

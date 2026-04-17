@@ -5,7 +5,8 @@ import { useParams } from "next/navigation";
 import HCaptcha from "@hcaptcha/react-hcaptcha";
 import { Briefcase, Calendar, CheckCircle2, Loader2 } from "lucide-react";
 
-type Question = { id: string; text: string; required: boolean; order: number };
+type QuestionType = "TEXT" | "LONG_TEXT" | "NUMBER" | "DATE" | "BOOLEAN" | "FILE" | "URL" | "EMAIL";
+type Question = { id: string; text: string; type: QuestionType; appliesToPublicForm: boolean; required: boolean; order: number };
 type Job = {
   id: string;
   statedRole: string;
@@ -29,7 +30,7 @@ export default function CareersPage() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [cvFile, setCvFile] = useState<File | null>(null);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [answers, setAnswers] = useState<Record<string, string | File>>({});
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -67,7 +68,11 @@ export default function CareersPage() {
       if (cvFile) fd.append("cv", cvFile);
       fd.append("captchaToken", captchaToken);
       for (const [qId, answer] of Object.entries(answers)) {
-        fd.append(`answer_${qId}`, answer);
+        if (answer instanceof File) {
+          fd.append(`answer_${qId}`, answer);
+        } else {
+          fd.append(`answer_${qId}`, String(answer));
+        }
       }
 
       const res = await fetch(`/api/public/careers/${slug}/apply`, {
@@ -208,14 +213,36 @@ export default function CareersPage() {
 
                 <div className="form-control gap-1">
                   <label className="label py-0">
-                    <span className="label-text">CV / Resume (PDF, DOC — max 10 MB)</span>
+                    <span className="label-text">CV / Resume (PDF only — max 10 MB)</span>
                   </label>
                   <input
                     type="file"
                     className="file-input file-input-bordered bg-base-100 w-full"
-                    accept=".pdf,.doc,.docx"
-                    onChange={(e) => setCvFile(e.target.files?.[0] ?? null)}
+                    accept="application/pdf,.pdf"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] ?? null;
+                      if (!f) {
+                        setCvFile(null);
+                        return;
+                      }
+                      const isPdf = f.type === "application/pdf" && f.name.toLowerCase().endsWith(".pdf");
+                      if (!isPdf) {
+                        setError("CV must be a PDF file.");
+                        e.target.value = "";
+                        setCvFile(null);
+                        return;
+                      }
+                      if (f.size > 10 * 1024 * 1024) {
+                        setError("CV must be under 10 MB.");
+                        e.target.value = "";
+                        setCvFile(null);
+                        return;
+                      }
+                      setError(null);
+                      setCvFile(f);
+                    }}
                   />
+                  <span className="label-text-alt text-base-content/60 mt-1">Only PDF files are accepted.</span>
                 </div>
               </div>
             </div>
@@ -224,21 +251,60 @@ export default function CareersPage() {
               <div className="card bg-base-200 shadow-sm">
                 <div className="card-body gap-4">
                   <h2 className="font-semibold text-base-content">Application Questions</h2>
-                  {job.questions.map((q) => (
+                  {job.questions.filter(q => q.appliesToPublicForm).map((q) => (
                     <div key={q.id} className="form-control gap-1">
                       <label className="label py-0">
-                        <span className="label-text">
+                        <span className="label-text font-medium">
                           {q.text}
                           {q.required && <span className="text-error ml-1">*</span>}
                         </span>
                       </label>
-                      <textarea
-                        className="textarea textarea-bordered bg-base-100 min-h-[80px]"
-                        placeholder="Your answer..."
-                        value={answers[q.id] ?? ""}
-                        onChange={(e) => setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
-                        required={q.required}
-                      />
+                      {q.type === "LONG_TEXT" ? (
+                        <textarea
+                          className="textarea textarea-bordered bg-base-100 min-h-[80px]"
+                          placeholder="Your answer..."
+                          value={(answers[q.id] as string) ?? ""}
+                          onChange={(e) => setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
+                          required={q.required}
+                        />
+                      ) : q.type === "BOOLEAN" ? (
+                        <div className="flex items-center gap-6 mt-1">
+                          <label className="cursor-pointer flex items-center gap-2">
+                            <input type="radio" name={`q_${q.id}`} className="radio radio-primary radio-sm" required={q.required} onChange={() => setAnswers(prev => ({ ...prev, [q.id]: "true" }))} />
+                            <span className="text-sm">Yes</span>
+                          </label>
+                          <label className="cursor-pointer flex items-center gap-2">
+                            <input type="radio" name={`q_${q.id}`} className="radio radio-primary radio-sm" required={q.required} onChange={() => setAnswers(prev => ({ ...prev, [q.id]: "false" }))} />
+                            <span className="text-sm">No</span>
+                          </label>
+                        </div>
+                      ) : q.type === "FILE" ? (
+                        <input
+                          type="file"
+                          className="file-input file-input-bordered bg-base-100 w-full"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) setAnswers((prev) => ({ ...prev, [q.id]: f }));
+                            else {
+                              setAnswers((prev) => {
+                                const newAns = { ...prev };
+                                delete newAns[q.id];
+                                return newAns;
+                              });
+                            }
+                          }}
+                          required={q.required}
+                        />
+                      ) : (
+                        <input
+                          type={q.type === "NUMBER" ? "number" : q.type === "DATE" ? "date" : q.type === "EMAIL" ? "email" : q.type === "URL" ? "url" : "text"}
+                          className="input input-bordered bg-base-100"
+                          placeholder={q.type === "DATE" ? "" : "Your answer..."}
+                          value={(answers[q.id] as string) ?? ""}
+                          onChange={(e) => setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
+                          required={q.required}
+                        />
+                      )}
                     </div>
                   ))}
                 </div>

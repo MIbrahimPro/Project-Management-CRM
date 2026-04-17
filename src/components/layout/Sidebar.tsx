@@ -23,6 +23,7 @@ import {
   MessageCircleQuestion,
   KeyRound,
   Users,
+  Sparkles,
   type LucideProps,
 } from "lucide-react";
 import type { SidebarItem } from "@/config/sidebar";
@@ -45,6 +46,7 @@ const ICON_MAP: Record<string, IconComponent> = {
   MessageCircleQuestion,
   KeyRound,
   Users,
+  Sparkles,
 };
 
 function resolveIcon(name: string): IconComponent {

@@ -360,8 +360,9 @@ function NewProjectForm() {
   }
 
   function canNext() {
-    if (step === 1) return title.trim().length >= 2 && description.trim().length >= 1;
-    if (step === 2) return milestones.length > 0 && milestones.every((m) => m.title.trim());
+    if (step === 1) return title.trim().length >= 2;
+    if (step === 2) return description.trim().length >= 10;
+    if (step === 3) return milestones.length > 0 && milestones.every((m) => m.title.trim());
     return true;
   }
 
@@ -422,14 +423,14 @@ function NewProjectForm() {
 
       {/* Step indicator */}
       <ul className="steps w-full text-xs">
-        {["Basic Info", "Milestones", "Team", "Review"].map((label, i) => (
+        {["Details", "Requirements", "Milestones", "Questions"].map((label, i) => (
           <li key={label} className={`step ${step > i ? "step-primary" : ""}`}>
             {label}
           </li>
         ))}
       </ul>
 
-      {/* ── Step 1: Basic Info ── */}
+      {/* ── Step 1: Details ── */}
       {step === 1 && (
         <div className="card bg-base-200 shadow-sm">
           <div className="card-body space-y-4">
@@ -443,16 +444,6 @@ function NewProjectForm() {
                 onChange={(e) => setTitle(e.target.value)}
                 minLength={2}
                 maxLength={200}
-              />
-            </div>
-
-            <div className="form-control gap-1">
-              <label className="label py-0"><span className="label-text">Description *</span></label>
-              <textarea
-                className="textarea textarea-bordered bg-base-100 min-h-24"
-                placeholder="What does this project involve?"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
               />
             </div>
 
@@ -472,7 +463,7 @@ function NewProjectForm() {
               </div>
 
               <div className="form-control gap-1">
-                <label className="label py-0"><span className="label-text">Budget</span></label>
+                <label className="label py-0"><span className="label-text">Budget (USD)</span></label>
                 <input
                   type="number"
                   className="input input-bordered bg-base-100"
@@ -483,12 +474,58 @@ function NewProjectForm() {
                 />
               </div>
             </div>
+
+            <div className="form-control gap-1">
+              <label className="label py-0"><span className="label-text">Assign Team Members</span></label>
+              <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1">
+                {teamMembers.map((m) => {
+                  const selected = selectedMemberIds.has(m.id);
+                  return (
+                    <label
+                      key={m.id}
+                      className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors border ${
+                        selected ? "bg-primary/10 border-primary/30" : "bg-base-100 border-transparent hover:bg-base-300"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="checkbox checkbox-primary checkbox-xs"
+                        checked={selected}
+                        onChange={() => toggleMember(m.id)}
+                      />
+                      <span className="text-xs font-medium truncate">{m.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* ── Step 2: Milestones ── */}
+      {/* ── Step 2: Requirements ── */}
       {step === 2 && (
+        <div className="card bg-base-200 shadow-sm">
+          <div className="card-body space-y-4">
+            <div className="form-control gap-1">
+              <label className="label py-0"><span className="label-text">Project Requirements *</span></label>
+              <textarea
+                className="textarea textarea-bordered bg-base-100 min-h-[300px]"
+                placeholder="Describe the full scope, technical requirements, and objectives..."
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                autoFocus
+              />
+              <p className="text-xs text-base-content/40 mt-1">
+                This will be used by AI to generate milestones and questions.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Step 3: Milestones ── */}
+      {step === 3 && (
         <div className="card bg-base-200 shadow-sm">
           <div className="card-body space-y-4">
             <div className="space-y-2">
@@ -543,49 +580,6 @@ function NewProjectForm() {
         </div>
       )}
 
-      {/* ── Step 3: Team ── */}
-      {step === 3 && (
-        <div className="card bg-base-200 shadow-sm">
-          <div className="card-body space-y-4">
-            <h3 className="font-semibold text-base-content">
-              Select Team Members
-              {selectedMemberIds.size > 0 && (
-                <span className="ml-2 badge badge-primary badge-sm">{selectedMemberIds.size}</span>
-              )}
-            </h3>
-
-            <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-              {teamMembers.map((m) => {
-                const selected = selectedMemberIds.has(m.id);
-                return (
-                  <label
-                    key={m.id}
-                    className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
-                      selected ? "bg-primary/10 border border-primary/30" : "bg-base-300 hover:bg-base-300/80"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      className="checkbox checkbox-primary checkbox-sm"
-                      checked={selected}
-                      onChange={() => toggleMember(m.id)}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-base-content truncate">{m.name}</p>
-                      <p className="text-xs text-base-content/50">
-                        {ROLE_LABELS[m.role] ?? m.role}
-                      </p>
-                    </div>
-                  </label>
-                );
-              })}
-              {teamMembers.length === 0 && (
-                <p className="text-center py-8 text-base-content/40 text-sm">No team members found</p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── Step 4: Review + Questions ── */}
       {step === 4 && (

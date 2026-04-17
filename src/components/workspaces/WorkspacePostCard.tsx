@@ -71,23 +71,26 @@ function CardMedia({ path }: { path: string }) {
   );
 }
 
+import { AvatarStack } from "@/components/projects/AvatarStack";
+
 export interface WorkspacePostCardProps {
   task: WorkspaceTask;
   members: WorkspaceMember[];
   onClick: () => void;
+  presenceMap?: Record<string, string>;
 }
 
 /**
  * Equal-height post card for social media workspace sections.
  */
-export function WorkspacePostCard({ task, members, onClick }: WorkspacePostCardProps) {
+export function WorkspacePostCard({ task, members, onClick, presenceMap }: WorkspacePostCardProps) {
   const preview = blockNoteJsonToPlainText(task.description);
   const displayPath = pickDisplayPath(task);
   const status = STATUS_BADGE[task.status];
 
   const assignees = task.assigneeIds
     .map((id) => members.find((m) => m.userId === id)?.user)
-    .filter(Boolean);
+    .filter(Boolean) as any[];
 
   return (
     <button
@@ -117,26 +120,20 @@ export function WorkspacePostCard({ task, members, onClick }: WorkspacePostCardP
         </p>
 
         <div className="flex items-center justify-between gap-2 pt-1 mt-auto border-t border-base-300">
-          <div className="flex -space-x-1.5 min-w-0">
-            {assignees.slice(0, 4).map((u) =>
-              u ? (
-                <div
-                  key={u.id}
-                  className="w-7 h-7 rounded-full bg-primary/25 border-2 border-base-200 flex items-center justify-center text-xs font-semibold text-primary flex-shrink-0"
-                  title={u.name}
-                >
-                  {u.name[0]}
-                </div>
-              ) : null
-            )}
-            {assignees.length > 4 && (
-              <div className="w-7 h-7 rounded-full bg-base-300 border-2 border-base-200 flex items-center justify-center text-xs text-base-content/60 flex-shrink-0">
-                +{assignees.length - 4}
-              </div>
-            )}
-            {assignees.length === 0 && (
-              <span className="text-xs text-base-content/40">Unassigned</span>
-            )}
+          <div className="flex items-center gap-2">
+             <AvatarStack 
+                users={assignees.slice(0, 3)} 
+                overflow={Math.max(0, assignees.length - 3)}
+                presenceMap={presenceMap}
+             />
+             {assignees.length > 0 && presenceMap && (
+               <span className="text-[10px] text-base-content/40">
+                  {assignees.filter(u => presenceMap[u.id] === "online").length} online
+               </span>
+             )}
+             {assignees.length === 0 && (
+               <span className="text-xs text-base-content/40">Unassigned</span>
+             )}
           </div>
         </div>
 

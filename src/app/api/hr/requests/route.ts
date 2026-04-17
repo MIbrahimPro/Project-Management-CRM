@@ -17,7 +17,13 @@ const createSchema = z.object({
   publicTitle: z.string().optional(),
   publicDescription: z.string().optional(),
   deadline: z.string().datetime().optional(),
-  questions: z.array(z.object({ text: z.string(), required: z.boolean().default(true), order: z.number() })).optional(),
+  questions: z.array(z.object({ 
+    text: z.string(), 
+    type: z.enum(["TEXT", "LONG_TEXT", "NUMBER", "DATE", "BOOLEAN", "FILE", "URL", "EMAIL"]).default("TEXT"),
+    required: z.boolean().default(true), 
+    appliesToPublicForm: z.boolean().default(true),
+    order: z.number() 
+  })).optional(),
 });
 
 export const GET = apiHandler(async (req: NextRequest) => {
@@ -57,6 +63,8 @@ export const POST = apiHandler(async (req: NextRequest) => {
 
   const body = createSchema.parse(await req.json());
 
+  const isManager = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(userRole);
+
   const request = await prisma.$transaction(async (tx) => {
     const req = await tx.hiringRequest.create({
       data: {
@@ -67,11 +75,16 @@ export const POST = apiHandler(async (req: NextRequest) => {
         publicTitle: body.publicTitle,
         publicDescription: body.publicDescription,
         deadline: body.deadline ? new Date(body.deadline) : null,
+        status: isManager ? "DRAFT" : "PENDING_APPROVAL",
+        managerApproved: isManager,
+        adminApproved: isManager,
         questions: body.questions
           ? {
               create: body.questions.map((q) => ({
                 text: q.text,
+                type: q.type,
                 required: q.required,
+                appliesToPublicForm: q.appliesToPublicForm,
                 order: q.order,
               })),
             }

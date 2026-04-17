@@ -13,6 +13,8 @@ import {
   useDraggable,
 } from "@dnd-kit/core";
 import { GripVertical } from "lucide-react";
+import { AvatarStack } from "@/components/projects/AvatarStack";
+import { usePresence } from "@/components/layout/PresenceProvider";
 
 export type TaskStatus = "TODO" | "IN_PROGRESS" | "IN_REVIEW" | "DONE" | "CANCELLED";
 
@@ -72,6 +74,7 @@ function DraggableTaskCard({
   overlay?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: task.id });
+  const presenceMap = usePresence();
   return (
     <div
       ref={setNodeRef}
@@ -97,16 +100,12 @@ function DraggableTaskCard({
           <p className="text-xs text-base-content/40 truncate pl-5">{task.project.title}</p>
         )}
         {task.assignees.length > 0 && (
-          <div className="flex -space-x-1.5 pl-5">
-            {task.assignees.slice(0, 3).map((a) => (
-              <div
-                key={a.user.id}
-                className="w-5 h-5 rounded-full bg-primary/30 border border-base-100 flex items-center justify-center text-xs font-bold text-primary"
-                title={a.user.name}
-              >
-                {a.user.name[0]}
-              </div>
-            ))}
+          <div className="pl-5">
+            <AvatarStack 
+              users={task.assignees.slice(0, 3).map(a => a.user)}
+              overflow={Math.max(0, task.assignees.length - 3)}
+              presenceMap={presenceMap}
+            />
           </div>
         )}
       </div>

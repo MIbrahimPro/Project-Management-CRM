@@ -112,6 +112,22 @@ export async function getPresence(userId: string): Promise<"online" | "away" | "
     return "offline";
   }
 }
+export async function getAllOnlineUsers(): Promise<Record<string, "online" | "away">> {
+  try {
+    const keys = await redis.keys("presence:*");
+    if (keys.length === 0) return {};
+    const values = await redis.mget(keys);
+    const map: Record<string, "online" | "away"> = {};
+    keys.forEach((key, i) => {
+      const userId = key.split(":")[1];
+      const status = values[i] as "online" | "away";
+      if (status) map[userId] = status;
+    });
+    return map;
+  } catch {
+    return {};
+  }
+}
 export async function updateLastActive(userId: string) {
   try {
     await redis.setex(`last_active:${userId}`, 3600, Date.now().toString());

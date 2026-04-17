@@ -7,7 +7,8 @@ interface UserAvatarProps {
   /** Display name for initials fallback. */
   user: { name: string; profilePicUrl?: string | null };
   size?: 24 | 28 | 32 | 48 | 64 | 96 | 128;
-  showOnline?: boolean;
+  showPresence?: boolean;
+  isOnline?: boolean;
 }
 
 const FALLBACK_COLORS = [
@@ -51,15 +52,35 @@ function isHttpUrl(s: string): boolean {
 }
 
 function isPrivateStoragePath(s: string): boolean {
-  return s.startsWith("profile-pics/");
+  return (
+    s.startsWith("profile-pics/") || 
+    s.startsWith("chat-media/") ||
+    s.startsWith("workspace-task-media/") ||
+    s.startsWith("photos/")
+  );
+}
+
+function extractPathFromSupabaseUrl(url: string): string | null {
+  try {
+    const u = new URL(url);
+    const marker = "/devrolin-files/";
+    const idx = u.pathname.indexOf(marker);
+    if (idx === -1) return null;
+    return decodeURIComponent(u.pathname.slice(idx + marker.length)).split("?")[0];
+  } catch {
+    return null;
+  }
 }
 
 /**
- * Resolves `profilePicUrl` for display: Supabase private paths (`profile-pics/...`)
- * become a short-lived signed URL via `/api/storage/signed-url`. Already-signed https
- * URLs are used as-is.
+ * Resolves `profilePicUrl` for display.
  */
-export function UserAvatar({ user, size = 32, showOnline = false }: UserAvatarProps) {
+export function UserAvatar({
+  user,
+  size = 32,
+  showPresence = false,
+  isOnline = false,
+}: UserAvatarProps) {
   const [imgError, setImgError] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [resolvedSrc, setResolvedSrc] = useState<string | null>(null);
@@ -75,16 +96,13 @@ export function UserAvatar({ user, size = 32, showOnline = false }: UserAvatarPr
       setResolvedSrc(null);
       return;
     }
-    if (isHttpUrl(raw)) {
-      setResolvedSrc(raw);
-      return;
-    }
-    if (isPrivateStoragePath(raw)) {
+
+    let path = isPrivateStoragePath(raw) ? raw : extractPathFromSupabaseUrl(raw);
+
+    if (path) {
       let cancelled = false;
       setResolvedSrc(null);
-      fetch(`/api/storage/signed-url?path=${encodeURIComponent(raw)}`, {
-        credentials: "include",
-      })
+      fetch(`/api/storage/signed-url?path=${encodeURIComponent(path)}`)
         .then((r) => {
           if (!r.ok) throw new Error(String(r.status));
           return r.json() as Promise<{ url?: string }>;
@@ -99,7 +117,13 @@ export function UserAvatar({ user, size = 32, showOnline = false }: UserAvatarPr
         cancelled = true;
       };
     }
-    setResolvedSrc(null);
+
+    // Fallback: if it's an HTTP URL (but not a supabase one that needs signing), use as is.
+    if (isHttpUrl(raw)) {
+      setResolvedSrc(raw);
+    } else {
+      setResolvedSrc(null);
+    }
   }, [user.profilePicUrl]);
 
   const hasProfilePic = Boolean(resolvedSrc) && !imgError;
@@ -139,8 +163,12 @@ export function UserAvatar({ user, size = 32, showOnline = false }: UserAvatarPr
           </span>
         </div>
       )}
-      {showOnline && (
-        <span className="absolute bottom-0 right-0 w-3 h-3 bg-success border-2 border-base-100 rounded-full" />
+      {showPresence && (
+        <span
+          className={`absolute bottom-0 right-0 w-3 h-3 border-2 border-base-100 rounded-full ${
+            isOnline ? "bg-success" : "bg-base-content/30"
+          }`}
+        />
       )}
     </div>
   );

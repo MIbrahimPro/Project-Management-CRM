@@ -80,3 +80,45 @@
     text-rendering: optimizeLegibility;
   }
 }
+
+/* Badge UI polish — DaisyUI's defaults are cramped and low-contrast in some themes. */
+@layer components {
+  .badge {
+    @apply px-2.5 py-1 font-semibold leading-none gap-1;
+    min-height: 1.5rem;
+    border-width: 1px;
+  }
+  .badge-xs {
+    @apply px-2 py-0.5 text-[10px];
+    min-height: 1.125rem;
+  }
+  .badge-sm {
+    @apply px-2 py-0.5 text-xs;
+    min-height: 1.25rem;
+  }
+  .badge-lg {
+    @apply px-3 py-1.5 text-sm;
+    min-height: 1.75rem;
+  }
+  /* Ghost is nearly invisible on light themes — force readable bg + border. */
+  .badge-ghost {
+    background-color: hsl(var(--b3));
+    color: hsl(var(--bc));
+    border-color: hsl(var(--b3));
+  }
+  /* Outline variant in every color needs a visible text color (DaisyUI leaves it as base-content). */
+  .badge-outline {
+    background-color: transparent;
+  }
+  /* Soft-tone fix for badge-* colors so they have guaranteed contrast against any theme base. */
+  .badge.badge-primary,
+  .badge.badge-secondary,
+  .badge.badge-accent,
+  .badge.badge-info,
+  .badge.badge-success,
+  .badge.badge-warning,
+  .badge.badge-error,
+  .badge.badge-neutral {
+    border-color: transparent;
+  }
+}

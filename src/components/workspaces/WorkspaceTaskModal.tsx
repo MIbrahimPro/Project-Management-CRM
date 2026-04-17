@@ -11,6 +11,8 @@ import {
   Star,
   Trash2,
   X,
+  Video,
+  PlayCircle,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import type { WorkspaceTask, WorkspaceMember } from "./types";
@@ -22,6 +24,8 @@ import {
   getPrimaryWorkspacePostTarget,
   workspacePostMenuLabel,
 } from "@/lib/workspace-post-status";
+import { UserAvatar } from "@/components/ui/UserAvatar";
+import MeetingRecordingList from "@/components/meetings/MeetingRecordingList";
 
 const StandaloneEditor = dynamic(() => import("@/components/documents/StandaloneEditor"), {
   ssr: false,
@@ -43,11 +47,11 @@ interface WorkspaceTaskModalProps {
   task: WorkspaceTask;
   members: WorkspaceMember[];
   workspaceId: string;
-  /** From `x-user-role` — drives allowed status transitions */
   userRole: string;
   onClose: () => void;
   onUpdate: (taskId: string, data: Partial<WorkspaceTask>) => void;
   onDelete: (taskId: string) => void;
+  presenceMap?: Record<string, string>;
 }
 
 function MediaThumb({ path, label }: { path: string; label: string }) {
@@ -67,9 +71,6 @@ function MediaThumb({ path, label }: { path: string; label: string }) {
   );
 }
 
-/**
- * Post editor: BlockNote description with debounced save, optional posted date, multi-media with cover selection.
- */
 export function WorkspaceTaskModal({
   task,
   members,
@@ -78,6 +79,7 @@ export function WorkspaceTaskModal({
   onClose,
   onUpdate,
   onDelete,
+  presenceMap,
 }: WorkspaceTaskModalProps) {
   const [title, setTitle] = useState(task.title);
   const [status, setStatus] = useState(task.status);
@@ -88,6 +90,8 @@ export function WorkspaceTaskModal({
   const [uploading, setUploading] = useState(false);
   const [descSave, setDescSave] = useState<DescSaveState>("idle");
   const [statusBusy, setStatusBusy] = useState(false);
+  const [startingMeeting, setStartingMeeting] = useState(false);
+  const [recordingsOpen, setRecordingsOpen] = useState(false);
 
   const descRef = useRef<{ getContent: () => string } | null>(null);
   const descTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -98,69 +102,16 @@ export function WorkspaceTaskModal({
     setStatus(task.status);
     setAssigneeIds(task.assigneeIds);
     setPostedAt(task.postedAt ? task.postedAt.split("T")[0] : "");
-    lastSentDescRef.current = task.description ?? "";
-  }, [task.id, task.updatedAt, task.title, task.status, task.assigneeIds, task.postedAt, task.description]);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  const saveDescription = useCallback(
-    async (json: string) => {
-      if (json === lastSentDescRef.current) {
-        setDescSave("idle");
-        return;
-      }
-      setDescSave("saving");
-      try {
-        const res = await fetch(`/api/workspaces/${workspaceId}/tasks/${task.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ description: json }),
-        });
-        if (!res.ok) throw new Error("save");
-        const data = (await res.json()) as { data: Partial<WorkspaceTask> };
-        lastSentDescRef.current = json;
-        onUpdate(task.id, data.data);
-        setDescSave("saved");
-        setTimeout(() => setDescSave("idle"), 2000);
-      } catch {
-        setDescSave("error");
-      }
-    },
-    [task.id, workspaceId, onUpdate]
-  );
-
-  const scheduleDescriptionSave = useCallback(
-    (json: string) => {
-      if (descTimerRef.current) clearTimeout(descTimerRef.current);
-      setDescSave("saving");
-      descTimerRef.current = setTimeout(() => {
-        void saveDescription(json);
-      }, 1200);
-    },
-    [saveDescription]
-  );
-
+  }, [task]);
+  
   useEffect(() => {
     return () => {
       if (descTimerRef.current) clearTimeout(descTimerRef.current);
-      const latest = descRef.current?.getContent();
-      if (latest !== undefined && latest !== lastSentDescRef.current) {
-        void fetch(`/api/workspaces/${workspaceId}/tasks/${task.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ description: latest }),
-        }).catch(() => undefined);
-      }
     };
-  }, [task.id, workspaceId]);
+  }, []);
 
-  async function saveMeta() {
+  const saveMeta = useCallback(async () => {
+    if (!title.trim() || saving) return;
     setSaving(true);
     try {
       const res = await fetch(`/api/workspaces/${workspaceId}/tasks/${task.id}`, {
@@ -168,91 +119,112 @@ export function WorkspaceTaskModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: title.trim(),
-          assigneeIds,
-          postedAt: postedAt ? new Date(postedAt).toISOString() : null,
+          postedAt: postedAt || null,
         }),
       });
       if (!res.ok) throw new Error("Failed");
       const data = (await res.json()) as { data: Partial<WorkspaceTask> };
       onUpdate(task.id, data.data);
-      toast.success("Details saved", {
-        style: { background: "hsl(var(--b2))", color: "hsl(var(--bc))" },
-      });
+      toast.success("Saved");
     } catch {
-      toast.error("Could not save", {
-        style: { background: "hsl(var(--b2))", color: "hsl(var(--er))" },
-      });
+      toast.error("Failed to save");
     } finally {
       setSaving(false);
     }
-  }
+  }, [title, postedAt, workspaceId, task.id, saving, onUpdate]);
 
-  async function deleteTask() {
-    if (!confirm("Delete this post?")) return;
-    setDeleting(true);
-    try {
-      await fetch(`/api/workspaces/${workspaceId}/tasks/${task.id}`, { method: "DELETE" });
-      onDelete(task.id);
-      onClose();
-    } catch {
-      // silent
-    } finally {
-      setDeleting(false);
-    }
+  async function scheduleDescriptionSave(json: string) {
+    if (json === lastSentDescRef.current) return;
+    setDescSave("saving");
+    if (descTimerRef.current) clearTimeout(descTimerRef.current);
+    descTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/workspaces/${workspaceId}/tasks/${task.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ description: json }),
+        });
+        if (!res.ok) throw new Error();
+        lastSentDescRef.current = json;
+        onUpdate(task.id, { description: json });
+        setDescSave("saved");
+        setTimeout(() => setDescSave("idle"), 2000);
+      } catch {
+        setDescSave("error");
+      }
+    }, 1500);
   }
 
   async function uploadMedia(file: File) {
+    if (uploading) return;
     setUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch(`/api/workspaces/${workspaceId}/tasks/${task.id}/media`, {
+      const res = await fetch(`/api/workspaces/${workspaceId}/tasks/${task.id}/attachments`, {
         method: "POST",
-        body: fd,
+        body: formData,
       });
-      const j = (await res.json()) as {
-        data?: { attachments: string[]; thumbnailPath: string | null };
-      };
-      if (!res.ok) throw new Error("upload");
-      if (j.data) {
-        onUpdate(task.id, {
-          attachments: j.data.attachments,
-          thumbnailPath: j.data.thumbnailPath,
-        });
-      }
+      if (!res.ok) throw new Error();
+      const data = (await res.json()) as { data: Partial<WorkspaceTask> };
+      onUpdate(task.id, data.data);
+      toast.success("Uploaded");
     } catch {
-      // silent
+      toast.error("Upload failed");
     } finally {
       setUploading(false);
     }
   }
 
-  async function setThumbnail(path: string | null) {
-    const res = await fetch(`/api/workspaces/${workspaceId}/tasks/${task.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ thumbnailPath: path }),
-    });
-    const data = (await res.json()) as { data: Partial<WorkspaceTask> };
-    if (res.ok) onUpdate(task.id, data.data);
-  }
-
   async function removeAttachment(path: string) {
-    const next = task.attachments.filter((p) => p !== path);
-    const nextThumb = task.thumbnailPath === path ? null : task.thumbnailPath;
-    const res = await fetch(`/api/workspaces/${workspaceId}/tasks/${task.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ attachments: next, thumbnailPath: nextThumb }),
-    });
-    const data = (await res.json()) as { data: Partial<WorkspaceTask> };
-    if (res.ok) onUpdate(task.id, data.data);
+    if (!confirm("Remove this attachment?")) return;
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/tasks/${task.id}/attachments`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path }),
+      });
+      if (!res.ok) throw new Error();
+      const data = (await res.json()) as { data: Partial<WorkspaceTask> };
+      onUpdate(task.id, data.data);
+    } catch {
+      toast.error("Failed to remove");
+    }
   }
 
-  function toggleAssignee(userId: string) {
-    setAssigneeIds((prev) =>
-      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
-    );
+  async function setThumbnail(path: string | null) {
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ thumbnailPath: path }),
+      });
+      if (!res.ok) throw new Error();
+      const data = (await res.json()) as { data: Partial<WorkspaceTask> };
+      onUpdate(task.id, data.data);
+    } catch {
+      toast.error("Failed to set cover");
+    }
+  }
+
+  async function toggleAssignee(userId: string) {
+    const nextIds = assigneeIds.includes(userId)
+      ? assigneeIds.filter((id) => id !== userId)
+      : [...assigneeIds, userId];
+    
+    setAssigneeIds(nextIds);
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assigneeIds: nextIds }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      const data = (await res.json()) as { data: Partial<WorkspaceTask> };
+      onUpdate(task.id, data.data);
+    } catch {
+      toast.error("Could not save assignees");
+    }
   }
 
   async function applyStatus(next: WorkspaceTask["status"]) {
@@ -266,9 +238,7 @@ export function WorkspaceTaskModal({
       });
       const j = (await res.json()) as { data?: Partial<WorkspaceTask>; error?: string };
       if (!res.ok) {
-        toast.error(j.error ?? "Could not update status", {
-          style: { background: "hsl(var(--b2))", color: "hsl(var(--er))" },
-        });
+        toast.error(j.error ?? "Could not update status");
         return;
       }
       if (j.data?.status) setStatus(j.data.status);
@@ -278,25 +248,56 @@ export function WorkspaceTaskModal({
     }
   }
 
-  function confirmArchive() {
-    if (!canArchiveWorkspacePost(userRole, status)) return;
-    if (
-      !confirm(
-        "Archive this post? It will move to Past posts (archived). You can change it back later if you have access."
-      )
-    ) {
+  async function startMeeting() {
+    const meetingTab = window.open("about:blank", "_blank");
+    if (!meetingTab) {
+      toast.error("Please allow pop-ups to open meetings");
       return;
     }
-    void applyStatus("ARCHIVED");
+    setStartingMeeting(true);
+    try {
+      const res = await fetch("/api/meetings/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          title: `Task: ${task.title}`, 
+          taskId: task.id,
+          workspaceId: workspaceId 
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      meetingTab.location.href = `/meetings/${data.data.meetingId}`;
+    } catch (e: any) {
+      meetingTab.close();
+      toast.error(e.message);
+    } finally {
+      setStartingMeeting(false);
+    }
+  }
+
+  async function deleteTask() {
+    if (!confirm("Are you sure you want to delete this post forever?")) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/tasks/${task.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error();
+      onDelete(task.id);
+      onClose();
+    } catch {
+      toast.error("Failed to delete");
+    } finally {
+      setDeleting(false);
+    }
   }
 
   const currentStatus = STATUSES.find((s) => s.value === status)!;
   const primaryTarget = getPrimaryWorkspacePostTarget(userRole, status);
   const allowedTargets = getAllowedWorkspacePostTargets(userRole, status);
-  const showArchiveBtn = canArchiveWorkspacePost(userRole, status);
-  const menuTargets = allowedTargets.filter(
-    (t) => t !== primaryTarget && t !== "ARCHIVED"
-  );
+  const showArchiveBtn = canArchiveWorkspacePost(userRole, status) && !!task.postedAt;
+  const menuTargets = allowedTargets.filter((t) => t !== primaryTarget && t !== "ARCHIVED");
 
   return (
     <dialog className="modal modal-open">
@@ -308,11 +309,7 @@ export function WorkspaceTaskModal({
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Post title"
           />
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm btn-circle flex-shrink-0"
-            onClick={onClose}
-          >
+          <button type="button" className="btn btn-ghost btn-sm btn-circle flex-shrink-0" onClick={onClose}>
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -329,34 +326,18 @@ export function WorkspaceTaskModal({
                   disabled={statusBusy}
                   onClick={() => void applyStatus(primaryTarget)}
                 >
-                  {statusBusy ? (
-                    <span className="loading loading-spinner loading-xs" />
-                  ) : null}
+                  {statusBusy && <span className="loading loading-spinner loading-xs" />}
                   {workspacePostMenuLabel(primaryTarget)}
                 </button>
                 {menuTargets.length > 0 && (
                   <div className="dropdown dropdown-end join-item">
-                    <label
-                      tabIndex={0}
-                      className="btn btn-primary btn-sm px-2 min-h-[2.25rem] border-0"
-                      title="Other status options"
-                    >
+                    <label tabIndex={0} className="btn btn-primary btn-sm px-2 min-h-[2.25rem] border-0">
                       <ChevronDown className="w-4 h-4" />
                     </label>
-                    <ul
-                      tabIndex={0}
-                      className="dropdown-content menu bg-base-200 border border-base-300 rounded-box w-56 shadow-lg z-[60] p-1 max-h-72 overflow-y-auto"
-                    >
-                      {menuTargets.map((to) => (
-                        <li key={to}>
-                          <button
-                            type="button"
-                            className="text-sm"
-                            disabled={statusBusy}
-                            onClick={() => void applyStatus(to)}
-                          >
-                            {workspacePostMenuLabel(to)}
-                          </button>
+                    <ul tabIndex={0} className="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-52 mt-1 border border-base-300">
+                      {menuTargets.map((t) => (
+                        <li key={t}>
+                          <button onClick={() => void applyStatus(t)}>{workspacePostMenuLabel(t)}</button>
                         </li>
                       ))}
                     </ul>
@@ -365,80 +346,40 @@ export function WorkspaceTaskModal({
               </div>
             )}
 
-            {!primaryTarget && menuTargets.length > 0 && (
-              <div className="dropdown dropdown-end">
-                <label
-                  tabIndex={0}
-                  className="btn btn-sm btn-outline border-base-300 gap-1"
-                  title="Change status"
-                >
-                  Other status…
-                  <ChevronDown className="w-4 h-4" />
-                </label>
-                <ul
-                  tabIndex={0}
-                  className="dropdown-content menu bg-base-200 border border-base-300 rounded-box w-56 shadow-lg z-[60] p-1 max-h-72 overflow-y-auto"
-                >
-                  {menuTargets.map((to) => (
-                    <li key={to}>
-                      <button
-                        type="button"
-                        className="text-sm"
-                        disabled={statusBusy}
-                        onClick={() => void applyStatus(to)}
-                      >
-                        {workspacePostMenuLabel(to)}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
             {showArchiveBtn && (
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm btn-square text-base-content/70 hover:bg-base-300 hover:text-base-content"
-                title="Archive post"
-                disabled={statusBusy}
-                onClick={confirmArchive}
-              >
-                <Trash2 className="w-4 h-4" />
+              <button className="btn btn-ghost btn-sm gap-1" onClick={() => applyStatus("ARCHIVED")}>
+                Archive
               </button>
             )}
 
-            <div className="flex items-center gap-2 text-sm text-base-content/70">
-              <Calendar className="w-4 h-4 opacity-60" />
-              <span>Created {new Date(task.createdAt).toLocaleString()}</span>
-            </div>
+            <div className="flex-1" />
 
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <span className="text-base-content/60 whitespace-nowrap">Posted date</span>
-              <input
-                type="date"
-                className="input input-bordered input-sm bg-base-100 max-w-[11rem]"
-                value={postedAt}
-                onChange={(e) => setPostedAt(e.target.value)}
-              />
-            </label>
+            <div className="flex items-center gap-2">
+              <button className="btn btn-sm btn-ghost gap-2" onClick={() => setRecordingsOpen(true)}>
+                <PlayCircle className="w-4 h-4" />
+                History
+              </button>
+              <button 
+                className="btn btn-sm btn-primary gap-2"
+                onClick={startMeeting}
+                disabled={startingMeeting}
+              >
+                {startingMeeting ? <span className="loading loading-spinner loading-xs" /> : <Video className="w-4 h-4" />}
+                Discuss
+              </button>
+            </div>
           </div>
 
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs text-base-content/50 uppercase font-semibold tracking-widest">
-                Description
-              </p>
-              <span className="text-xs text-base-content/40 min-h-[1rem]">
-                {descSave === "saving" && (
-                  <span className="inline-flex items-center gap-1">
-                    <Loader2 className="w-3 h-3 animate-spin" /> Saving…
+          <div className="space-y-6">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs text-base-content/50 uppercase font-semibold tracking-widest">Description</p>
+                {descSave !== "idle" && (
+                  <span className={`text-[10px] uppercase font-bold ${descSave === "saving" ? "text-primary animate-pulse" : descSave === "saved" ? "text-success" : "text-error"}`}>
+                    {descSave === "saving" ? "Saving..." : descSave === "saved" ? "Saved" : "Error"}
                   </span>
                 )}
-                {descSave === "saved" && "Saved"}
-                {descSave === "error" && <span className="text-error">Could not save</span>}
-              </span>
-            </div>
-            <div className="bg-base-100 rounded-xl border border-base-300 min-h-[200px] overflow-hidden">
+              </div>
               <StandaloneEditor
                 key={task.id}
                 ref={descRef}
@@ -446,133 +387,120 @@ export function WorkspaceTaskModal({
                 onChange={(json) => scheduleDescriptionSave(json)}
               />
             </div>
-          </div>
 
-          <div>
-            <p className="text-xs text-base-content/50 uppercase font-semibold tracking-widest mb-2">
-              Media
-            </p>
-            <div className="flex flex-wrap gap-2 mb-3">
-              <label className="btn btn-sm btn-outline gap-1 cursor-pointer border-base-300 hover:bg-base-300">
-                {uploading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <ImagePlus className="w-4 h-4" />
-                )}
-                Add media
-                <input
-                  type="file"
-                  className="hidden"
-                  accept="image/*,video/*"
-                  disabled={uploading}
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    e.target.value = "";
-                    if (f) void uploadMedia(f);
-                  }}
-                />
-              </label>
-            </div>
-            {task.attachments.length === 0 ? (
-              <p className="text-xs text-base-content/40">No media yet.</p>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {task.attachments.map((path) => (
-                  <div
-                    key={path}
-                    className="relative rounded-xl border border-base-300 overflow-hidden bg-base-100 group"
-                  >
-                    <MediaThumb path={path} label="attachment" />
-                    <div className="absolute top-2 right-2 flex gap-1 opacity-100 sm:opacity-90">
-                      <button
-                        type="button"
-                        className={`btn btn-xs btn-circle ${
-                          task.thumbnailPath === path ? "btn-primary" : "btn-ghost bg-base-100/90"
-                        }`}
-                        title="Use as cover"
-                        onClick={() =>
-                          void setThumbnail(task.thumbnailPath === path ? null : path)
-                        }
-                      >
-                        <Star className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-xs btn-circle btn-ghost bg-base-100/90 text-error"
-                        title="Remove"
-                        onClick={() => void removeAttachment(path)}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+            <div>
+              <p className="text-xs text-base-content/50 uppercase font-semibold tracking-widest mb-2">Media</p>
+              <div className="flex flex-wrap gap-2 mb-3">
+                <label className="btn btn-sm btn-outline gap-1 cursor-pointer border-base-300 hover:bg-base-300">
+                  {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImagePlus className="w-4 h-4" />}
+                  Add media
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept="image/*,video/*"
+                    disabled={uploading}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = "";
+                      if (f) void uploadMedia(f);
+                    }}
+                  />
+                </label>
               </div>
-            )}
-          </div>
-
-          <div>
-            <p className="text-xs text-base-content/50 uppercase font-semibold tracking-widest mb-2">
-              Assignees
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {members.map((m) => {
-                const isAssigned = assigneeIds.includes(m.userId);
-                return (
-                  <button
-                    key={m.userId}
-                    type="button"
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
-                      isAssigned
-                        ? "bg-primary/15 border-primary/40 text-primary"
-                        : "bg-base-300 border-base-300 text-base-content/70 hover:border-primary/30"
-                    }`}
-                    onClick={() => toggleAssignee(m.userId)}
-                  >
-                    <span className="w-4 h-4 rounded-full bg-primary/30 flex items-center justify-center text-xs font-bold text-primary">
-                      {m.user.name[0]}
-                    </span>
-                    {m.user.name}
-                  </button>
-                );
-              })}
-              {members.length === 0 && (
-                <p className="text-xs text-base-content/40">No members on this board.</p>
+              {task.attachments.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {task.attachments.map((path) => (
+                    <div key={path} className="relative rounded-xl border border-base-300 overflow-hidden bg-base-100 group">
+                      <MediaThumb path={path} label="attachment" />
+                      <div className="absolute top-2 right-2 flex gap-1">
+                        <button
+                          type="button"
+                          className={`btn btn-xs btn-circle ${task.thumbnailPath === path ? "btn-primary" : "btn-ghost bg-base-100/90"}`}
+                          title="Use as cover"
+                          onClick={() => void setThumbnail(task.thumbnailPath === path ? null : path)}
+                        >
+                          <Star className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-xs btn-circle btn-ghost bg-base-100/90 text-error"
+                          title="Remove"
+                          onClick={() => void removeAttachment(path)}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-base-content/40">No media yet.</p>
               )}
+            </div>
+
+            <div>
+              <p className="text-xs text-base-content/50 uppercase font-semibold tracking-widest mb-2">Assignees</p>
+              <div className="flex flex-wrap gap-2">
+                {members.map((m) => {
+                  const isAssigned = assigneeIds.includes(m.userId);
+                  const isOnline = presenceMap ? presenceMap[m.userId] === "online" : false;
+                  return (
+                    <button
+                      key={m.userId}
+                      type="button"
+                      className={`flex items-center gap-1.5 pl-1.5 pr-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                        isAssigned ? "bg-primary/15 border-primary/40 text-primary" : "bg-base-300 border-base-300 text-base-content/70 hover:border-primary/30"
+                      }`}
+                      onClick={() => toggleAssignee(m.userId)}
+                    >
+                      <UserAvatar user={m.user} size={24} showPresence={!!presenceMap} isOnline={isOnline} />
+                      {m.user.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs text-base-content/50 uppercase font-semibold tracking-widest mb-2">Posted Date</p>
+              <input
+                type="date"
+                className="input input-bordered input-sm w-full max-w-xs bg-base-100"
+                value={postedAt}
+                onChange={(e) => setPostedAt(e.target.value)}
+              />
             </div>
           </div>
         </div>
 
         <div className="modal-action border-t border-base-300 px-5 py-4 mt-0 bg-base-200/95">
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm text-error gap-1"
-            onClick={() => void deleteTask()}
-            disabled={deleting}
-          >
-            {deleting ? (
-              <span className="loading loading-spinner loading-xs" />
-            ) : (
-              <Trash2 className="w-3.5 h-3.5" />
-            )}
-            Delete forever
+          <button type="button" className="btn btn-ghost btn-sm text-error gap-1" onClick={deleteTask} disabled={deleting}>
+            {deleting ? <span className="loading loading-spinner loading-xs" /> : <Trash2 className="w-3.5 h-3.5" />}
+            Delete
           </button>
           <div className="flex-1" />
-          <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
-            Close
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary btn-sm gap-1"
-            onClick={() => void saveMeta()}
-            disabled={saving || !title.trim()}
-          >
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>Close</button>
+          <button type="button" className="btn btn-primary btn-sm gap-1" onClick={saveMeta} disabled={saving || !title.trim()}>
             {saving ? <span className="loading loading-spinner loading-xs" /> : <Save className="w-3.5 h-3.5" />}
-            Save details
+            Save Changes
           </button>
         </div>
       </div>
-      <div className="modal-backdrop bg-base-content/40" onClick={onClose} />
+
+      {recordingsOpen && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-2xl bg-base-100">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-lg">Task Recordings</h3>
+              <button className="btn btn-ghost btn-sm btn-circle" onClick={() => setRecordingsOpen(false)}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <MeetingRecordingList taskId={task.id} />
+          </div>
+          <div className="modal-backdrop" onClick={() => setRecordingsOpen(false)} />
+        </div>
+      )}
     </dialog>
   );
 }

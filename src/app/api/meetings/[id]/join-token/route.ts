@@ -32,10 +32,28 @@ export const GET = apiHandler(async (req: NextRequest, ctx) => {
       jitsiRoomId: true,
       endedAt: true,
       projectId: true,
+      workspaceId: true,
+      taskId: true,
       project: {
         select: {
           clientId: true,
           members: { select: { userId: true } },
+        },
+      },
+      workspace: {
+        select: {
+          members: { select: { userId: true } },
+        },
+      },
+      task: {
+        select: {
+          assignees: { select: { userId: true } },
+          createdById: true,
+        },
+      },
+      interview: {
+        select: {
+          interviewers: { select: { id: true } },
         },
       },
     },
@@ -65,13 +83,24 @@ export const GET = apiHandler(async (req: NextRequest, ctx) => {
 
   const authenticatedUserId = userId as string;
 
-  // Access check for project-scoped meetings
+  // Access check for scoped meetings
   const isManager = MANAGER_ROLES.includes(userRole);
-  if (!isManager && meeting.project) {
-    const isMember = meeting.project.members.some((m) => m.userId === authenticatedUserId);
-    const isClient =
-      userRole === "CLIENT" && meeting.project.clientId === authenticatedUserId;
-    if (!isMember && !isClient) forbidden();
+  if (!isManager) {
+    if (meeting.project) {
+      const isMember = meeting.project.members.some((m) => m.userId === authenticatedUserId);
+      const isClient = userRole === "CLIENT" && meeting.project.clientId === authenticatedUserId;
+      if (!isMember && !isClient) forbidden();
+    } else if (meeting.workspace) {
+      const isMember = meeting.workspace.members.some((m) => m.userId === authenticatedUserId);
+      if (!isMember) forbidden();
+    } else if (meeting.task) {
+      const isAssignee = meeting.task.assignees.some((m) => m.userId === authenticatedUserId);
+      const isCreator = meeting.task.createdById === authenticatedUserId;
+      if (!isAssignee && !isCreator) forbidden();
+    } else if (meeting.interview) {
+      const isInterviewer = meeting.interview.interviewers.some((u) => u.id === authenticatedUserId);
+      if (!isInterviewer) forbidden();
+    }
   }
 
   const user = await prisma.user.findUnique({

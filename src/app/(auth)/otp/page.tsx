@@ -27,7 +27,7 @@ export default function OtpPage() {
       .catch(() => {
         router.replace("/forgot-password");
       });
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     if (resendCooldown > 0) {

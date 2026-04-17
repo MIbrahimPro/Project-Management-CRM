@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { CheckSquare, Kanban, Plus, X, Check } from "lucide-react";
 import toast from "react-hot-toast";
 import { TaskKanban, type TaskCard, type TaskStatus } from "@/components/tasks/TaskKanban";
+import { AvatarStack } from "@/components/projects/AvatarStack";
+import { usePresence } from "@/components/layout/PresenceProvider";
 
 const TOAST_STYLE = { background: "hsl(var(--b2))", color: "hsl(var(--bc))" };
 const TOAST_ERROR_STYLE = { background: "hsl(var(--b2))", color: "hsl(var(--er))" };
@@ -26,6 +28,7 @@ export default function TasksPage() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"list" | "kanban">("list");
   const [tab, setTab] = useState<"all" | "general" | "project">("all");
+  const presenceMap = usePresence();
 
   // New task modal
   const [showModal, setShowModal] = useState(false);
@@ -106,16 +109,31 @@ export default function TasksPage() {
     );
   }
 
-  const filteredTasks = tasks.filter((t) => {
+  const currentTasks = tasks.filter((t) => ["TODO", "IN_PROGRESS", "IN_REVIEW"].includes(t.status));
+  const pastTasks = tasks.filter((t) => ["DONE", "CANCELLED"].includes(t.status));
+
+  const filteredCurrent = currentTasks.filter((t) => {
     if (tab === "general") return !t.project;
     if (tab === "project") return !!t.project;
     return true;
   });
 
+  const filteredPast = pastTasks.filter((t) => {
+    if (tab === "general") return !t.project;
+    if (tab === "project") return !!t.project;
+    return true;
+  });
+
+import { TaskCard } from "@/components/tasks/TaskCard";
+
+export default function TasksPage() {
+  // ... (rest of state stays same)
+  // [Inside the return, replacing from {view === "kanban" ? ...}]
+  
   return (
     <>
-      <div className="space-y-5">
-        {/* Header */}
+      <div className="space-y-10 max-w-[1600px] mx-auto">
+        {/* Header (stays mostly same) */}
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-semibold text-base-content">Tasks</h1>
@@ -125,11 +143,12 @@ export default function TasksPage() {
                 <button className={`tab ${tab === "general" ? "tab-active" : ""}`} onClick={() => setTab("general")}>General</button>
                 <button className={`tab ${tab === "project" ? "tab-active" : ""}`} onClick={() => setTab("project")}>Project</button>
               </div>
-              <span className="text-xs text-base-content/40">{filteredTasks.length} task{filteredTasks.length !== 1 ? "s" : ""}</span>
+              <span className="text-xs text-base-content/40">
+                {tasks.length} task{tasks.length !== 1 ? "s" : ""}
+              </span>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {/* View toggle */}
             <div className="join">
               <button
                 className={`btn btn-sm join-item gap-1 ${view === "list" ? "btn-primary" : "btn-ghost"}`}
@@ -156,65 +175,63 @@ export default function TasksPage() {
           </div>
         </div>
 
-        {/* Views */}
         {view === "kanban" ? (
           <TaskKanban
-            tasks={filteredTasks}
+            tasks={[...filteredCurrent, ...filteredPast]}
             onStatusChange={handleStatusChange}
             onTaskClick={(t) => router.push(`/tasks/${t.id}`)}
           />
         ) : (
-          <div className="card bg-base-200 shadow-sm overflow-hidden">
-            {filteredTasks.length === 0 ? (
-              <div className="flex flex-col items-center py-12 text-base-content/40 gap-2">
-                <CheckSquare className="w-10 h-10 opacity-30" />
-                <p className="text-sm">No tasks yet</p>
+          <div className="space-y-12">
+            {/* Current Tasks */}
+            <section className="space-y-4">
+              <div className="flex items-center justify-between border-b border-base-300 pb-3">
+                <h2 className="text-lg font-bold text-base-content/80">Current Tasks</h2>
+                <span className="badge badge-sm badge-neutral">{filteredCurrent.length}</span>
               </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="table table-sm">
-                  <thead>
-                    <tr className="text-base-content/50">
-                      <th>Title</th>
-                      <th>Status</th>
-                      <th>Project</th>
-                      <th>Assignees</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredTasks.map((t) => (
-                      <tr
-                        key={t.id}
-                        className="hover:bg-base-300 cursor-pointer transition-colors"
-                        onClick={() => router.push(`/tasks/${t.id}`)}
-                      >
-                        <td className="font-medium text-sm">{t.title}</td>
-                        <td>
-                          <span className={`badge badge-xs ${STATUS_BADGE[t.status]}`}>
-                            {t.status.replace("_", " ")}
-                          </span>
-                        </td>
-                        <td className="text-xs text-base-content/50">{t.project?.title ?? "—"}</td>
-                        <td>
-                          <div className="flex -space-x-1.5">
-                            {t.assignees.slice(0, 3).map((a) => (
-                              <div
-                                key={a.user.id}
-                                className="w-5 h-5 rounded-full bg-primary/30 border border-base-100 flex items-center justify-center text-xs font-bold text-primary"
-                                title={a.user.name}
-                              >
-                                {a.user.name[0]}
-                              </div>
-                            ))}
-                            {t.assignees.length === 0 && <span className="text-base-content/30 text-xs">—</span>}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              
+              {filteredCurrent.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-base-300 bg-base-200/50 py-12 text-center">
+                  <p className="text-sm text-base-content/40">No active tasks in this view</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {filteredCurrent.map((t) => (
+                    <TaskCard 
+                      key={t.id} 
+                      task={t} 
+                      onClick={() => router.push(`/tasks/${t.id}`)}
+                      presenceMap={presenceMap}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* Past Tasks */}
+            <section className="space-y-4">
+              <div className="flex items-center justify-between border-b border-base-300 pb-3">
+                <h2 className="text-lg font-bold text-base-content/40">Archive</h2>
+                <span className="badge badge-sm badge-ghost">{filteredPast.length}</span>
               </div>
-            )}
+              
+              {filteredPast.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-base-300 bg-base-200/50 py-12 text-center">
+                  <p className="text-sm text-base-content/40">Nothing in the archive yet</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 opacity-70">
+                  {filteredPast.map((t) => (
+                    <TaskCard 
+                      key={t.id} 
+                      task={t} 
+                      onClick={() => router.push(`/tasks/${t.id}`)}
+                      presenceMap={presenceMap}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
           </div>
         )}
       </div>
@@ -228,30 +245,20 @@ export default function TasksPage() {
               <X className="w-4 h-4" />
             </button>
           </div>
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div className="form-control gap-1">
               <label className="label py-0"><span className="label-text">Title</span></label>
               <input
                 type="text"
                 className="input input-bordered bg-base-100"
-                placeholder="Task title"
+                placeholder="What needs to be done?"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 autoFocus
+                onKeyDown={(e) => e.key === "Enter" && void createTask()}
               />
             </div>
-            <div className="form-control gap-1">
-              <label className="label py-0"><span className="label-text">Status</span></label>
-              <select
-                className="select select-bordered select-sm bg-base-100"
-                value={status}
-                onChange={(e) => setStatus(e.target.value as TaskStatus)}
-              >
-                {(["TODO", "IN_PROGRESS", "IN_REVIEW", "DONE", "CANCELLED"] as TaskStatus[]).map((s) => (
-                  <option key={s} value={s}>{s.replace("_", " ")}</option>
-                ))}
-              </select>
-            </div>
+            
             <div className="form-control gap-1">
               <label className="label py-0"><span className="label-text">Project (optional)</span></label>
               <select
@@ -259,19 +266,17 @@ export default function TasksPage() {
                 value={projectId}
                 onChange={(e) => setProjectId(e.target.value)}
               >
-                <option value="">None</option>
+                <option value="">None (General Task)</option>
                 {projects.map((p) => (
                   <option key={p.id} value={p.id}>{p.title}</option>
                 ))}
               </select>
             </div>
+
             {teamMembers.length > 0 && (
               <div className="form-control gap-1">
                 <label className="label py-0">
                   <span className="label-text">Assignees</span>
-                  <span className="label-text-alt text-base-content/50">
-                    {assigneeIds.length} selected
-                  </span>
                 </label>
                 <div className="bg-base-100 border border-base-300 rounded-lg max-h-48 overflow-y-auto divide-y divide-base-300">
                   {teamMembers.map((m) => {
@@ -281,7 +286,7 @@ export default function TasksPage() {
                         key={m.id}
                         type="button"
                         className={`w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-base-200 transition-colors ${
-                          assigned ? "bg-primary/10" : ""
+                          assigned ? "bg-primary/5" : ""
                         }`}
                         onClick={() =>
                           setAssigneeIds((prev) =>
@@ -289,13 +294,13 @@ export default function TasksPage() {
                           )
                         }
                       >
-                        <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center text-xs font-semibold text-primary flex-shrink-0">
+                        <div className="w-7 h-7 rounded-full bg-base-300 flex items-center justify-center text-[10px] font-bold text-base-content flex-shrink-0 uppercase">
                           {m.name.split(" ").map((n) => n[0]).slice(0, 2).join("")}
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-base-content truncate">{m.name}</p>
-                          <p className="text-xs text-base-content/50 truncate">
-                            {m.role.replace(/_/g, " ").toLowerCase()}
+                          <p className="text-[10px] text-base-content/40 uppercase tracking-wider">
+                            {m.role.replace(/_/g, " ")}
                           </p>
                         </div>
                         {assigned && <Check className="w-4 h-4 text-primary flex-shrink-0" />}
@@ -314,7 +319,7 @@ export default function TasksPage() {
               disabled={creating || !title.trim()}
             >
               {creating && <span className="loading loading-spinner loading-sm" />}
-              Create
+              Create Task
             </button>
           </div>
         </div>

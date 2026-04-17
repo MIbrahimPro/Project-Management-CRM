@@ -95,9 +95,38 @@ export const GET = apiHandler(
 
     if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+    // Generate signed URLs for members and client
+    const membersWithSignedUrls = await Promise.all(
+      project.members.map(async (m) => {
+        let avatarSignedUrl: string | null = null;
+        if (m.user.profilePicUrl) {
+          try {
+            avatarSignedUrl = await getSignedUrl(m.user.profilePicUrl, 3600);
+          } catch {}
+        }
+        return {
+          ...m,
+          user: {
+            ...m.user,
+            profilePicUrl: avatarSignedUrl || m.user.profilePicUrl,
+          },
+        };
+      })
+    );
+
+    let clientWithSignedUrl = project.client;
+    if (project.client?.profilePicUrl) {
+      try {
+        const url = await getSignedUrl(project.client.profilePicUrl, 3600);
+        clientWithSignedUrl = { ...project.client, profilePicUrl: url };
+      } catch {}
+    }
+
     return NextResponse.json({
       data: {
         ...project,
+        members: membersWithSignedUrls,
+        client: clientWithSignedUrl,
         projectDescription: projectDescription?.content ?? "",
         unreadMessages,
         unansweredQuestions,

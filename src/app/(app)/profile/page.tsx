@@ -8,11 +8,13 @@ import ReactCrop, {
   type PixelCrop,
 } from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
-import { Camera, RotateCw } from "lucide-react";
+import { Camera } from "lucide-react";
 import toast from "react-hot-toast";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import { InlineEditField } from "@/components/ui/InlineEditField";
 import { useInlineEdit } from "@/hooks/useInlineEdit";
+import { ContractVersionList } from "@/components/contracts/ContractVersionList";
+import { FileText, ChevronDown, ChevronUp, DollarSign, Shield } from "lucide-react";
 
 // ---- Types ----
 
@@ -28,6 +30,7 @@ type ProfileData = {
   statedRole: string | null;
   isGoogleConnected: boolean;
   currencyPreference: string;
+  salary: string | null;
   createdAt: string;
 };
 
@@ -40,39 +43,40 @@ function toCenteredSquareCrop(w: number, h: number): Crop {
 async function buildCroppedBlob(params: {
   imageDataUrl: string;
   crop: PixelCrop;
-  zoom: number;
-  rotation: number;
+  renderedWidth: number;
+  renderedHeight: number;
 }): Promise<Blob> {
   const img = await new Promise<HTMLImageElement>((resolve, reject) => {
     const el = new Image();
+    el.crossOrigin = "anonymous";
     el.onload = () => resolve(el);
     el.onerror = () => reject(new Error("Failed to load image"));
     el.src = params.imageDataUrl;
   });
 
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.floor(params.crop.width));
-  canvas.height = Math.max(1, Math.floor(params.crop.height));
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Canvas not available");
+  const scaleX = img.naturalWidth / params.renderedWidth;
+  const scaleY = img.naturalHeight / params.renderedHeight;
 
-  const scaleX = img.naturalWidth / img.width;
-  const scaleY = img.naturalHeight / img.height;
+  // Use natural pixels for output to maintain quality
+  canvas.width = params.crop.width * scaleX;
+  canvas.height = params.crop.height * scaleY;
+  // Ensure we don't have 0 size
+  canvas.width = Math.max(1, canvas.width);
+  canvas.height = Math.max(1, canvas.height);
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas context not available");
+
   const cropX = params.crop.x * scaleX;
   const cropY = params.crop.y * scaleY;
   const cropW = params.crop.width * scaleX;
   const cropH = params.crop.height * scaleY;
 
-  ctx.save();
-  ctx.translate(canvas.width / 2, canvas.height / 2);
-  ctx.rotate((params.rotation * Math.PI) / 180);
-  ctx.scale(params.zoom, params.zoom);
-  ctx.translate(-cropX - cropW / 2, -cropY - cropH / 2);
-  ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight);
-  ctx.restore();
+  ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, canvas.width, canvas.height);
 
   const blob = await new Promise<Blob | null>((res) =>
-    canvas.toBlob(res, "image/jpeg", 0.92)
+    canvas.toBlob(res, "image/jpeg", 0.95)
   );
   if (!blob) throw new Error("Failed to generate cropped image");
   return blob;
@@ -87,6 +91,11 @@ export default function ProfilePage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [profile, setProfile] = useState<ProfileData | null>(null);
 
+  // Contracts
+  const [contracts, setContracts] = useState<any[]>([]);
+  const [fetchingContracts, setFetchingContracts] = useState(false);
+  const [expandedContract, setExpandedContract] = useState<string | null>(null);
+
   // Crop modal
   const [modalOpen, setModalOpen] = useState(false);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
@@ -96,6 +105,7 @@ export default function ProfilePage() {
   const [rotation, setRotation] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [cropError, setCropError] = useState<string | null>(null);
+  const [renderedDim, setRenderedDim] = useState({ w: 0, h: 0 });
 
   // Load profile
   useEffect(() => {
@@ -110,6 +120,27 @@ export default function ProfilePage() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (profile && profile.role !== "CLIENT") {
+      setFetchingContracts(true);
+      fetch("/api/contracts")
+        .then((r) => r.json())
+        .then((d) => setContracts(d.data || []))
+        .finally(() => setFetchingContracts(false));
+    }
+  async function handleSign(contractId: string) {
+    try {
+      const res = await fetch(`/api/contracts/${contractId}/sign`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Signing failed");
+      
+      toast.success("Contract signed successfully");
+      setContracts(contracts.map(c => c.id === contractId ? { ...c, status: "SIGNED" } : c));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to sign contract");
+    }
+  }
 
   // Inline edit — name
   const nameEdit = useInlineEdit(profile?.name ?? "", async (name) => {
@@ -149,6 +180,16 @@ export default function ProfilePage() {
     // Only sync on initial profile load, not on every profile mutation
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id]);
+
+  const modalRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    if (modalOpen) {
+      modalRef.current?.showModal();
+    } else {
+      modalRef.current?.close();
+    }
+  }, [modalOpen]);
 
   // ---- Avatar handlers ----
 
@@ -193,8 +234,8 @@ export default function ProfilePage() {
       const blob = await buildCroppedBlob({
         imageDataUrl: imageSrc,
         crop: completedCrop,
-        zoom,
-        rotation,
+        renderedWidth: renderedDim.w,
+        renderedHeight: renderedDim.h,
       });
       const formData = new FormData();
       formData.append("avatar", new File([blob], "avatar.jpg", { type: "image/jpeg" }));
@@ -275,7 +316,7 @@ export default function ProfilePage() {
             className="relative group cursor-pointer"
             onClick={() => fileInputRef.current?.click()}
           >
-            <UserAvatar user={{ name: profile.name, profilePicUrl: profile.profilePicUrl }} size={96} />
+            <UserAvatar user={{ name: profile.name, profilePicUrl: profile.avatarSignedUrl || profile.profilePicUrl }} size={96} />
             <div className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
               <Camera className="w-7 h-7 text-white" />
             </div>
@@ -370,8 +411,96 @@ export default function ProfilePage() {
         </div>
       </div>
 
+      {/* Salary & Contracts (Hidden for Clients) */}
+      {profile.role !== "CLIENT" && (
+        <div className="space-y-6">
+          <div className="card bg-base-200 shadow-sm border border-base-300">
+            <div className="card-body">
+              <h2 className="font-semibold text-base-content mb-4 flex items-center gap-2">
+                <Shield className="w-5 h-5 text-primary" />
+                Employment & Compensation
+              </h2>
+
+              <div className="flex items-center justify-between py-3 border-b border-base-300">
+                <span className="text-sm text-base-content/60 w-32 shrink-0">Salary</span>
+                <span className="text-lg font-bold text-success flex items-center gap-1">
+                  <DollarSign className="w-4 h-4" />
+                  {profile.salary || "—"}
+                </span>
+              </div>
+
+              <div className="mt-4">
+                <h3 className="text-sm font-medium text-base-content/60 mb-3">Contracts</h3>
+                {fetchingContracts ? (
+                  <div className="flex justify-center py-4">
+                    <span className="loading loading-spinner loading-md text-primary" />
+                  </div>
+                ) : contracts.length === 0 ? (
+                  <div className="p-4 bg-base-100 rounded-lg border border-dashed border-base-content/20 text-center">
+                    <p className="text-xs text-base-content/40">No contracts found.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {contracts.map((c) => (
+                      <div key={c.id} className="border border-base-300 rounded-xl overflow-hidden bg-base-100">
+                        <button 
+                          className="w-full flex items-center justify-between p-4 hover:bg-base-200 transition-colors"
+                          onClick={() => setExpandedContract(expandedContract === c.id ? null : c.id)}
+                        >
+                          <div className="flex items-center gap-3 text-left">
+                            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                              <FileText className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium">{c.title}</p>
+                                <span className={`badge badge-xs ${c.status === "SIGNED" ? "badge-success" : "badge-warning"}`}>
+                                  {c.status}
+                                </span>
+                              </div>
+                              <p className="text-xs text-base-content/50">
+                                Version {c.currentVersion} • Updated {new Date(c.updatedAt).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {c.status === "PENDING" && (
+                              <button 
+                                className="btn btn-primary btn-xs"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSign(c.id);
+                                }}
+                              >
+                                Sign
+                              </button>
+                            )}
+                            {expandedContract === c.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                          </div>
+                        </button>
+                        
+                        {expandedContract === c.id && (
+                          <div className="p-4 bg-base-200 border-t border-base-300 animate-in slide-in-from-top-2 duration-200">
+                            <ContractVersionList 
+                              contractId={c.id} 
+                              versions={c.versions || []} 
+                              canManage={false} 
+                              onRefresh={() => {}} 
+                            />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Avatar crop modal */}
-      <dialog className={`modal ${modalOpen ? "modal-open" : ""}`}>
+      <dialog ref={modalRef} className="modal" onClose={() => setModalOpen(false)}>
         <div className="modal-box bg-base-200 max-w-lg w-full">
           <h3 className="font-bold text-lg text-base-content mb-4">Update Profile Picture</h3>
 
@@ -389,42 +518,14 @@ export default function ProfilePage() {
                   <img
                     src={imageSrc}
                     alt="Crop preview"
-                    className="max-h-[320px] w-full object-contain"
-                    style={{ transform: `scale(${zoom}) rotate(${rotation}deg)` }}
+                    className="max-h-[320px] max-w-full h-auto w-auto block mx-auto"
                     onLoad={(e) => {
-                      const t = e.currentTarget;
-                      setCrop(toCenteredSquareCrop(t.width, t.height));
+                      const { width, height } = e.currentTarget;
+                      setRenderedDim({ w: width, h: height });
+                      setCrop(toCenteredSquareCrop(width, height));
                     }}
                   />
                 </ReactCrop>
-              </div>
-
-              {/* Zoom + rotate */}
-              <div className="grid grid-cols-2 gap-4">
-                <label className="form-control gap-1">
-                  <span className="label-text text-xs text-base-content/60">Zoom</span>
-                  <input
-                    type="range"
-                    min={1}
-                    max={3}
-                    step={0.05}
-                    value={zoom}
-                    onChange={(e) => setZoom(Number(e.target.value))}
-                    className="range range-sm"
-                  />
-                </label>
-                <div className="form-control gap-1">
-                  <span className="label-text text-xs text-base-content/60">Rotate</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      className="btn btn-sm btn-outline gap-1"
-                      onClick={() => setRotation((r) => (r + 90) % 360)}
-                    >
-                      <RotateCw className="w-4 h-4" />
-                      {rotation}°
-                    </button>
-                  </div>
-                </div>
               </div>
 
               {cropError && <p className="text-error text-sm">{cropError}</p>}
@@ -454,7 +555,9 @@ export default function ProfilePage() {
             </div>
           )}
         </div>
-        <div className="modal-backdrop" onClick={closeModal} />
+        <form method="dialog" className="modal-backdrop">
+          <button>close</button>
+        </form>
       </dialog>
     </div>
   );

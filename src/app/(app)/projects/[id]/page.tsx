@@ -12,10 +12,16 @@ import {
   Pencil,
   Users,
   Video,
+  VideoOff,
   X,
+  PlayCircle,
 } from "lucide-react";
+import MeetingRecordingList from "@/components/meetings/MeetingRecordingList";
 import toast from "react-hot-toast";
 import { UserAvatar } from "@/components/ui/UserAvatar";
+import { usePresence } from "@/components/layout/PresenceProvider";
+import { TaskCard } from "@/components/tasks/TaskCard";
+import { Check } from "lucide-react";
 
 const StandaloneEditor = dynamic(
   () => import("@/components/documents/StandaloneEditor"),
@@ -87,6 +93,7 @@ export default function ProjectDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<{ id: string; name: string; role: string } | null>(null);
   const [startingMeeting, setStartingMeeting] = useState(false);
+  const presenceMap = usePresence();
 
   // Edit team modal
   const [editTeamOpen, setEditTeamOpen] = useState(false);
@@ -96,26 +103,42 @@ export default function ProjectDashboardPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [editClientOpen, setEditClientOpen] = useState(false);
   const [editClientId, setEditClientId] = useState("");
+  const [recordingsOpen, setRecordingsOpen] = useState(false);
   const [savingClient, setSavingClient] = useState(false);
   const [editMilestonesOpen, setEditMilestonesOpen] = useState(false);
   const [draftMilestones, setDraftMilestones] = useState<Milestone[]>([]);
   const [savingMilestones, setSavingMilestones] = useState(false);
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(true);
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskAssignees, setTaskAssignees] = useState<string[]>([]);
+  const [creatingTask, setCreatingTask] = useState(false);
 
   useEffect(() => {
     if (!params?.id) return;
     Promise.all([
       fetch(`/api/projects/${params.id}`).then((r) => r.json()),
+      fetch(`/api/projects/${params.id}/tasks`).then((r) => r.json()),
       fetch("/api/users/me").then((r) => r.json()),
     ])
-      .then(([projRes, userRes]: [{ data?: Project; error?: string }, { data: { id: string; name: string; role: string } }]) => {
+      .then(([projRes, tasksRes, userRes]: [
+        { data?: Project; error?: string },
+        { data?: any[] },
+        { data: { id: string; name: string; role: string } }
+      ]) => {
         if (projRes.error || !projRes.data) throw new Error(projRes.error ?? "Not found");
         setProject(projRes.data);
+        setTasks(tasksRes.data ?? []);
         setCurrentUser(userRes.data);
       })
       .catch(() => {
         toast.error("Failed to load project", { style: TOAST_ERROR_STYLE });
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        setLoading(false);
+        setTasksLoading(false);
+      });
   }, [params?.id]);
 
   async function openEditTeam() {
@@ -248,6 +271,47 @@ export default function ProjectDashboardPage() {
     } finally {
       setSavingTeam(false);
     }
+  }
+
+  async function createTask() {
+    if (!project || !taskTitle.trim()) return;
+    setCreatingTask(true);
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: taskTitle.trim(),
+          projectId: project.id,
+          assigneeIds: taskAssignees,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      
+      // The task API returns the new task. We need to fetch the full task 
+      // with relations or manually inject them.
+      // Easiest is to refresh the project tasks.
+      const taskRes = await fetch(`/api/projects/${project.id}/tasks`);
+      const taskData = await taskRes.json();
+      setTasks(taskData.data ?? []);
+      
+      setTaskTitle("");
+      setTaskAssignees([]);
+      setShowTaskModal(false);
+      toast.success("Task created", { style: TOAST_STYLE });
+    } catch (e: any) {
+      toast.error(e.message, { style: TOAST_ERROR_STYLE });
+    } finally {
+      setCreatingTask(false);
+    }
+  }
+
+  function openNewTaskModal() {
+    setTaskTitle("");
+    // Auto-assign all team members by default
+    setTaskAssignees(project?.members.map(m => m.user.id) ?? []);
+    setShowTaskModal(true);
   }
 
   async function startMeeting() {
@@ -419,93 +483,151 @@ export default function ProjectDashboardPage() {
           </div>
         </button>
 
-        <div className="card bg-base-200">
+        <button
+          className="card bg-base-200 hover:bg-base-300 transition-colors cursor-pointer text-left"
+          onClick={() => setRecordingsOpen(true)}
+        >
           <div className="card-body p-4">
-            <Users className="w-5 h-5 text-accent mb-1" />
-            <p className="text-xs text-base-content/50">Team</p>
-            <p className="text-sm font-medium text-base-content">{project.members.length} member{project.members.length !== 1 ? "s" : ""}</p>
+            <PlayCircle className="w-5 h-5 text-info mb-1" />
+            <p className="text-xs text-base-content/50">Recordings</p>
+            <p className="text-sm font-medium text-base-content">View clips</p>
           </div>
-        </div>
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Milestones */}
-        <div className="lg:col-span-2 card bg-base-200 shadow-sm">
-          <div className="card-body">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="card-title text-base">Milestones</h2>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-base-content/50">
-                  {completedMilestones} / {totalMilestones}
-                </span>
-                {isManager && (
-                  <button
-                    className="btn btn-ghost btn-xs btn-circle"
-                    onClick={openEditMilestones}
-                    title="Edit milestones"
-                  >
-                    <Pencil className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Progress bar */}
-            <div className="w-full bg-base-300 rounded-full h-2 mb-4">
-              <div
-                className="bg-primary h-2 rounded-full transition-all duration-500"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            <p className="text-xs text-base-content/50 mb-4">{progress}% complete</p>
-
-            {project.milestones.length === 0 ? (
-              <p className="text-center py-6 text-base-content/40 text-sm">No milestones</p>
-            ) : (
-              <div className="space-y-2">
-                {project.milestones.map((m) => (
-                  <div key={m.id} className="flex items-center gap-3 p-2 rounded-lg bg-base-300">
-                    {m.status === "COMPLETED" ? (
-                      <CheckCircle2 className="w-4 h-4 text-success flex-shrink-0" />
-                    ) : m.status === "IN_PROGRESS" ? (
-                      <Circle className="w-4 h-4 text-warning flex-shrink-0" />
-                    ) : m.status === "BLOCKED" ? (
-                      <Circle className="w-4 h-4 text-error flex-shrink-0" />
-                    ) : (
-                      <Circle className="w-4 h-4 text-base-content/20 flex-shrink-0" />
-                    )}
-                    <span
-                      className={`text-sm flex-1 ${
-                        m.status === "COMPLETED" ? "line-through text-base-content/40" : "text-base-content"
-                      }`}
+        {/* Milestones & Tasks */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Milestones */}
+          <div className="card bg-base-200 shadow-sm">
+            <div className="card-body">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="card-title text-base">Milestones</h2>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-base-content/50">
+                    {completedMilestones} / {totalMilestones}
+                  </span>
+                  {isManager && (
+                    <button
+                      className="btn btn-ghost btn-xs btn-circle"
+                      onClick={openEditMilestones}
+                      title="Edit milestones"
                     >
-                      {m.title}
-                    </span>
-                    {isManager ? (
-                      <select
-                        className="select select-xs select-bordered bg-base-100"
-                        value={m.status}
-                        onChange={(e) => void changeMilestoneStatus(m.id, e.target.value as MilestoneStatus)}
-                      >
-                        <option value="NOT_STARTED">Not Started</option>
-                        <option value="IN_PROGRESS">In Progress</option>
-                        <option value="BLOCKED">Blocked</option>
-                        <option value="COMPLETED">Done</option>
-                      </select>
-                    ) : (
-                      <>
-                        {m.status === "IN_PROGRESS" && (
-                          <span className="badge badge-warning badge-xs">In Progress</span>
-                        )}
-                        {m.status === "BLOCKED" && (
-                          <span className="badge badge-error badge-xs">Blocked</span>
-                        )}
-                      </>
-                    )}
-                  </div>
-                ))}
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
               </div>
-            )}
+
+              {/* Progress bar */}
+              <div className="w-full bg-base-300 rounded-full h-2 mb-4">
+                <div
+                  className="bg-primary h-2 rounded-full transition-all duration-500"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <p className="text-xs text-base-content/50 mb-4">{progress}% complete</p>
+
+              {project.milestones.length === 0 ? (
+                <p className="text-center py-6 text-base-content/40 text-sm">No milestones</p>
+              ) : (
+                <div className="space-y-2">
+                  {project.milestones.map((m) => (
+                    <div key={m.id} className="flex items-center gap-3 p-2 rounded-lg bg-base-300">
+                      {m.status === "COMPLETED" ? (
+                        <CheckCircle2 className="w-4 h-4 text-success flex-shrink-0" />
+                      ) : m.status === "IN_PROGRESS" ? (
+                        <Circle className="w-4 h-4 text-warning flex-shrink-0" />
+                      ) : m.status === "BLOCKED" ? (
+                        <Circle className="w-4 h-4 text-error flex-shrink-0" />
+                      ) : (
+                        <Circle className="w-4 h-4 text-base-content/20 flex-shrink-0" />
+                      )}
+                      <span
+                        className={`text-sm flex-1 ${
+                          m.status === "COMPLETED" ? "line-through text-base-content/40" : "text-base-content"
+                        }`}
+                      >
+                        {m.title}
+                      </span>
+                      {isManager ? (
+                        <select
+                          className="select select-xs select-bordered bg-base-100"
+                          value={m.status}
+                          onChange={(e) => void changeMilestoneStatus(m.id, e.target.value as MilestoneStatus)}
+                        >
+                          <option value="NOT_STARTED">Not Started</option>
+                          <option value="IN_PROGRESS">In Progress</option>
+                          <option value="BLOCKED">Blocked</option>
+                          <option value="COMPLETED">Done</option>
+                        </select>
+                      ) : (
+                        <>
+                          {m.status === "IN_PROGRESS" && (
+                            <span className="badge badge-warning badge-xs">In Progress</span>
+                          )}
+                          {m.status === "BLOCKED" && (
+                            <span className="badge badge-error badge-xs">Blocked</span>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Tasks Section */}
+          <div className="card bg-base-200 shadow-sm">
+            <div className="card-body">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="card-title text-base">Project Tasks</h2>
+                <button 
+                  className="btn btn-primary btn-xs"
+                  onClick={openNewTaskModal}
+                >
+                  New Task
+                </button>
+              </div>
+
+              {tasksLoading ? (
+                <div className="flex justify-center py-8">
+                  <span className="loading loading-spinner loading-sm text-primary" />
+                </div>
+              ) : tasks.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-base-300 py-10 text-center">
+                  <p className="text-sm text-base-content/40">No tasks created for this project</p>
+                  <button 
+                    className="btn btn-link btn-sm mt-1"
+                    onClick={openNewTaskModal}
+                  >
+                    Create first task
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {tasks.slice(0, 6).map((t) => (
+                    <TaskCard 
+                      key={t.id} 
+                      task={t} 
+                      onClick={() => router.push(`/tasks/${t.id}`)}
+                      presenceMap={presenceMap}
+                    />
+                  ))}
+                </div>
+              )}
+              {tasks.length > 6 && (
+                <div className="mt-4 text-center">
+                  <button 
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => router.push("/tasks?tab=project")}
+                  >
+                    View all project tasks
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -529,6 +651,8 @@ export default function ProjectDashboardPage() {
                   <UserAvatar
                     user={{ name: project.client.name, profilePicUrl: project.client.profilePicUrl }}
                     size={32}
+                    showPresence
+                    isOnline={presenceMap[project.client.id] === "online"}
                   />
                   <p className="text-sm font-medium text-base-content">{project.client.name}</p>
                 </div>
@@ -542,6 +666,9 @@ export default function ProjectDashboardPage() {
               <div className="flex items-center justify-between mb-3">
                 <h2 className="font-semibold text-sm text-base-content">
                   Team ({project.members.length})
+                  <span className="text-[10px] text-success font-medium ml-1.5">
+                    ({project.members.filter(m => presenceMap[m.user.id] === "online").length} online)
+                  </span>
                 </h2>
                 {isManager && (
                   <button
@@ -562,6 +689,8 @@ export default function ProjectDashboardPage() {
                       <UserAvatar
                         user={{ name: m.user.name, profilePicUrl: m.user.profilePicUrl }}
                         size={28}
+                        showPresence
+                        isOnline={presenceMap[m.user.id] === "online"}
                       />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium text-base-content truncate">{m.user.name}</p>
@@ -707,6 +836,98 @@ export default function ProjectDashboardPage() {
         <div className="modal-backdrop" onClick={() => setEditMilestonesOpen(false)} />
       </dialog>
     </div>
+      {/* New Task Modal */}
+      <dialog className={`modal ${showTaskModal ? "modal-open" : ""}`}>
+        <div className="modal-box bg-base-200 max-w-md">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-lg text-base-content">New Project Task</h3>
+            <button className="btn btn-ghost btn-sm btn-circle" onClick={() => setShowTaskModal(false)}>
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="space-y-4">
+            <div className="form-control gap-1">
+              <label className="label py-0"><span className="label-text">Title</span></label>
+              <input
+                type="text"
+                className="input input-bordered bg-base-100"
+                placeholder="What needs to be done?"
+                value={taskTitle}
+                onChange={(e) => setTaskTitle(e.target.value)}
+                autoFocus
+                onKeyDown={(e) => e.key === "Enter" && void createTask()}
+              />
+            </div>
+
+            {project.members.length > 0 && (
+              <div className="form-control gap-1">
+                <label className="label py-0">
+                  <span className="label-text">Assignees</span>
+                </label>
+                <div className="bg-base-100 border border-base-300 rounded-lg max-h-48 overflow-y-auto divide-y divide-base-300">
+                  {project.members.map((m) => {
+                    const assigned = taskAssignees.includes(m.user.id);
+                    return (
+                      <button
+                        key={m.user.id}
+                        type="button"
+                        className={`w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-base-200 transition-colors ${
+                          assigned ? "bg-primary/5" : ""
+                        }`}
+                        onClick={() =>
+                          setTaskAssignees((prev) =>
+                            assigned ? prev.filter((id) => id !== m.user.id) : [...prev, m.user.id]
+                          )
+                        }
+                      >
+                        <UserAvatar 
+                          user={{ name: m.user.name, profilePicUrl: m.user.profilePicUrl }}
+                          size={28}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-base-content truncate">{m.user.name}</p>
+                          <p className="text-[10px] text-base-content/40 uppercase tracking-wider">
+                            {ROLE_LABELS[m.user.role] ?? m.user.role}
+                          </p>
+                        </div>
+                        {assigned && <Check className="w-4 h-4 text-primary flex-shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="modal-action">
+            <button className="btn btn-ghost" onClick={() => setShowTaskModal(false)}>Cancel</button>
+            <button
+              className="btn btn-primary"
+              onClick={() => void createTask()}
+              disabled={creatingTask || !taskTitle.trim()}
+            >
+              {creatingTask && <span className="loading loading-spinner loading-sm" />}
+              Create Task
+            </button>
+          </div>
+        </div>
+        <div className="modal-backdrop" onClick={() => setShowTaskModal(false)} />
+      </dialog>
+
+      {/* Recordings Modal */}
+      {recordingsOpen && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-4xl bg-base-100">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="font-bold text-lg">Meeting Recordings</h3>
+              <button className="btn btn-ghost btn-sm btn-circle" onClick={() => setRecordingsOpen(false)}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <MeetingRecordingList projectId={project.id} />
+          </div>
+          <div className="modal-backdrop" onClick={() => setRecordingsOpen(false)} />
+        </div>
+      )}
     </>
   );
 }

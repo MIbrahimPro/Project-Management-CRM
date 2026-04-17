@@ -50,28 +50,45 @@ const ATTENDANCE_ROLES = [
   "ADMIN", "PROJECT_MANAGER", "DEVELOPER", "DESIGNER", "HR", "ACCOUNTANT", "SALES",
 ];
 
+import { MessageCircle, Search, Send, UserX } from "lucide-react";
+import { UserAvatar } from "@/components/ui/UserAvatar";
+
 export default function AttendancePage() {
   const [status, setStatus] = useState<StatusData | null>(null);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [mgmtData, setMgmtData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [checkingIn, setCheckingIn] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
   const [userRole, setUserRole] = useState<string>("");
+  const [mgmtSearch, setMgmtSearch] = useState("");
+  const [mgmtFilter, setMgmtFilter] = useState<"ALL" | "ABSENT" | "ACTIVE">("ALL");
+
+  const isManager = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(userRole);
 
   useEffect(() => {
-    Promise.all([
-      fetch("/api/attendance/status").then((r) => r.json()),
-      fetch("/api/attendance").then((r) => r.json()),
-      fetch("/api/users/me").then((r) => r.json()),
-    ])
-      .then(([statusRes, recordsRes, userRes]: [
-        { data: StatusData },
-        { data: AttendanceRecord[] },
-        { data: { role: string } },
-      ]) => {
+    fetch("/api/users/me")
+      .then((r) => r.json())
+      .then((userRes) => {
+        const role = userRes.data?.role ?? "";
+        setUserRole(role);
+        
+        const isManager = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(role);
+        const promises = [
+          fetch("/api/attendance/status").then((r) => r.json()),
+          fetch("/api/attendance").then((r) => r.json()),
+        ];
+        
+        if (isManager) {
+          promises.push(fetch("/api/attendance/management").then((r) => r.json()));
+        }
+
+        return Promise.all(promises);
+      })
+      .then(([statusRes, recordsRes, mgmtRes]: any[]) => {
         setStatus(statusRes.data);
         setRecords(recordsRes.data ?? []);
-        setUserRole(userRes.data?.role ?? "");
+        if (mgmtRes) setMgmtData(mgmtRes.data ?? []);
       })
       .catch(() => toast.error("Failed to load attendance", { style: TOAST_ERROR_STYLE }))
       .finally(() => setLoading(false));
@@ -117,6 +134,25 @@ export default function AttendancePage() {
     }
   }
 
+  async function handlePing(targetUserId: string) {
+    try {
+      const res = await fetch("/api/attendance/ping", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to send ping");
+      
+      toast.success("Ping sent!", { style: TOAST_STYLE });
+      // Refresh management data
+      const mgmtRes = await fetch("/api/attendance/management").then((r) => r.json());
+      setMgmtData(mgmtRes.data ?? []);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to ping", { style: TOAST_ERROR_STYLE });
+    }
+  }
+
   function formatDuration(inAt: string, outAt: string | null) {
     const start = new Date(inAt);
     const end = outAt ? new Date(outAt) : new Date();
@@ -132,6 +168,15 @@ export default function AttendancePage() {
   ).length;
   const thisMonthTotal = records.length;
 
+  const filteredMgmt = mgmtData.filter(e => {
+    const matchesSearch = e.name.toLowerCase().includes(mgmtSearch.toLowerCase()) || e.email.toLowerCase().includes(mgmtSearch.toLowerCase());
+    if (!matchesSearch) return false;
+    
+    if (mgmtFilter === "ABSENT") return e.attendance?.[0]?.status === "ABSENT" || !e.attendance?.[0];
+    if (mgmtFilter === "ACTIVE") return e.checkIns?.length > 0;
+    return true;
+  });
+
   if (loading) {
     return (
       <div className="flex justify-center py-16">
@@ -140,11 +185,144 @@ export default function AttendancePage() {
     );
   }
 
+  // Management View
+  if (isManager) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-2xl font-semibold text-base-content">Attendance Management</h1>
+            <p className="text-sm text-base-content/50 mt-0.5">
+              Team overview for {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+            </p>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <div className="join">
+              <button 
+                className={`join-item btn btn-sm ${mgmtFilter === "ALL" ? "btn-active" : ""}`}
+                onClick={() => setMgmtFilter("ALL")}
+              >
+                All
+              </button>
+              <button 
+                className={`join-item btn btn-sm ${mgmtFilter === "ACTIVE" ? "btn-active" : ""}`}
+                onClick={() => setMgmtFilter("ACTIVE")}
+              >
+                Active
+              </button>
+              <button 
+                className={`join-item btn btn-sm ${mgmtFilter === "ABSENT" ? "btn-active" : ""}`}
+                onClick={() => setMgmtFilter("ABSENT")}
+              >
+                Absent
+              </button>
+            </div>
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-base-content/30" />
+              <input 
+                type="text" 
+                placeholder="Search team..." 
+                className="input input-sm input-bordered pl-9 w-48"
+                value={mgmtSearch}
+                onChange={(e) => setMgmtSearch(e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {filteredMgmt.map((e) => {
+            const att = e.attendance?.[0];
+            const active = e.checkIns?.[0];
+            
+            return (
+              <div key={e.id} className="card bg-base-200 shadow-sm border border-base-300/50">
+                <div className="card-body p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <UserAvatar 
+                        name={e.name} 
+                        image={e.avatarSignedUrl} 
+                        size="md" 
+                        status={active ? "online" : "offline"}
+                      />
+                      <div>
+                        <h3 className="font-semibold text-base-content leading-none">{e.name}</h3>
+                        <p className="text-[10px] text-base-content/40 mt-1 uppercase tracking-wider">{e.role.replace("_", " ")}</p>
+                      </div>
+                    </div>
+                    {att?.status && (
+                      <span className={`badge badge-sm ${STATUS_BADGE[att.status as AttendanceStatus]}`}>
+                        {STATUS_LABEL[att.status as AttendanceStatus]}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="mt-4 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-base-content/40">Shift:</span>
+                      <span className="font-medium">{e.workHoursStart} - {e.workHoursEnd}</span>
+                    </div>
+                    {active ? (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-base-content/40">Logged in:</span>
+                        <span className="text-success font-medium">
+                          {new Date(active.checkedInAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-base-content/40">Last Action:</span>
+                        <span className="text-base-content/30 italic">Not checked in</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="card-actions justify-end mt-4 pt-3 border-t border-base-300/30">
+                    {!att && (
+                      <button 
+                        className={`btn btn-ghost btn-xs text-error gap-1 ${e.pings?.some((p: any) => p.status === "PENDING") ? "btn-disabled opacity-50" : ""}`}
+                        onClick={() => {
+                          if (e.pings?.some((p: any) => p.status === "PENDING")) return;
+                          void handlePing(e.id);
+                        }}
+                      >
+                        <Send className="w-3 h-3" />
+                        {e.pings?.some((p: any) => p.status === "PENDING") ? "Pinged" : "Ping"}
+                      </button>
+                    )}
+                    <button 
+                      className="btn btn-ghost btn-xs text-primary gap-1"
+                      onClick={() => {
+                        window.location.href = `/chat?userId=${e.id}`;
+                      }}
+                    >
+                      <MessageCircle className="w-3 h-3" />
+                      Message
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {filteredMgmt.length === 0 && (
+          <div className="flex flex-col items-center py-24 text-base-content/20 gap-3">
+            <UserX className="w-12 h-12" />
+            <p>No team members found for this filter</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Employee View
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold text-base-content">Attendance</h1>
+        <h1 className="text-2xl font-semibold text-base-content">My Attendance</h1>
         <p className="text-sm text-base-content/50 mt-0.5">
           {new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
         </p>
