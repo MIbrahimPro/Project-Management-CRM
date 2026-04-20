@@ -142,7 +142,7 @@ export const POST = apiHandler(async (req: NextRequest) => {
     });
   }
 
-  const token = generateLiveKitToken(liveKitRoomId, {
+  const token = await generateLiveKitToken(liveKitRoomId, {
     id: userId,
     name: user!.name,
     isModerator,

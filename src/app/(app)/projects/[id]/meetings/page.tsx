@@ -113,6 +113,13 @@ export default function ProjectMeetingsPage() {
 
   const [now, setNow] = useState(new Date());
 
+  // Manual Upload Recording State
+  const [showUpload, setShowUpload] = useState(false);
+  const [uploadMeetingId, setUploadMeetingId] = useState<string | null>(null);
+  const [uploadTitle, setUploadTitle] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 10000);
     return () => clearInterval(t);
@@ -329,6 +336,45 @@ export default function ProjectMeetingsPage() {
     });
   }
 
+  async function handleUploadRecording() {
+    if (!uploadMeetingId || !uploadFile) return;
+    setUploading(true);
+    const toastId = toast.loading("Uploading recording...", { style: TOAST_STYLE });
+    try {
+      // 1. Upload to chat storage
+      const formData = new FormData();
+      formData.append("file", uploadFile);
+      formData.append("type", "video");
+      const uploadRes = await fetch("/api/chat/upload", { method: "POST", body: formData });
+      const uploadData = await uploadRes.json();
+      if (!uploadRes.ok) throw new Error(uploadData.error || "Upload failed");
+
+      // 2. Save record
+      const res = await fetch(`/api/meetings/${uploadMeetingId}/recording`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          blobPath: uploadData.data.path,
+          title: uploadTitle || `Recording - ${dayjs().format("MMM D, YYYY")}`,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to save recording record");
+
+      toast.success("Recording uploaded!", { id: toastId });
+      setShowUpload(false);
+      setUploadFile(null);
+      setUploadTitle("");
+      
+      // Reload
+      const updated = await fetch(`/api/meetings?projectId=${projectId}`).then((r) => r.json()) as { data: Meeting[] };
+      setMeetings(updated.data ?? []);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to upload", { id: toastId });
+    } finally {
+      setUploading(false);
+    }
+  }
+
   function handleJoin(meeting: Meeting) {
     try {
       const url = `${window.location.origin}/join/meeting/${meeting.id}`;
@@ -510,7 +556,7 @@ export default function ProjectMeetingsPage() {
             {past.map((m) => (
               <div key={m.id} className="bg-base-200 rounded-xl overflow-hidden border border-base-300">
                 {/* Thumbnail / placeholder */}
-                <div className="bg-base-300 h-32 flex items-center justify-center">
+                <div className="bg-base-300 h-32 flex items-center justify-center relative group">
                   {m.recordings.length > 0 ? (
                     <div className="flex flex-col items-center gap-1 text-primary">
                       <PlayCircle className="w-10 h-10" />
@@ -520,6 +566,20 @@ export default function ProjectMeetingsPage() {
                     <div className="flex flex-col items-center gap-1 text-base-content/20">
                       <CheckCircle2 className="w-10 h-10" />
                       <span className="text-xs">No recording</span>
+                    </div>
+                  )}
+                  {isManager && (
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-4">
+                      <button 
+                        className="btn btn-primary btn-sm gap-2"
+                        onClick={() => {
+                          setUploadMeetingId(m.id);
+                          setShowUpload(true);
+                        }}
+                      >
+                        <Plus className="w-4 h-4" />
+                        Upload Rec
+                      </button>
                     </div>
                   )}
                 </div>
@@ -774,6 +834,56 @@ export default function ProjectMeetingsPage() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Upload Recording Modal */}
+      {showUpload && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-base-100 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
+            <div className="p-4 border-b border-base-300 flex items-center justify-between">
+              <h3 className="font-semibold text-lg">Upload Recording</h3>
+              <button className="btn btn-ghost btn-sm btn-circle" onClick={() => setShowUpload(false)}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="form-control">
+                <label className="label text-xs font-semibold">Recording Title</label>
+                <input
+                  type="text"
+                  className="input input-bordered"
+                  value={uploadTitle}
+                  onChange={(e) => setUploadTitle(e.target.value)}
+                  placeholder="e.g. Workshop Session"
+                />
+              </div>
+
+              <div className="form-control">
+                <label className="label text-xs font-semibold">Video File (MP4/WebM)</label>
+                <input
+                  type="file"
+                  accept="video/*"
+                  className="file-input file-input-bordered w-full"
+                  onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                />
+              </div>
+            </div>
+            <div className="p-4 border-t border-base-300 bg-base-200/50 flex justify-end gap-2">
+              <button className="btn btn-ghost" onClick={() => setShowUpload(false)}>Cancel</button>
+              <button
+                className="btn btn-primary"
+                onClick={() => void handleUploadRecording()}
+                disabled={uploading || !uploadFile}
+              >
+                {uploading ? (
+                  <span className="loading loading-spinner loading-sm" />
+                ) : (
+                  "Upload"
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

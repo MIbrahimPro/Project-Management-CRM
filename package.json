@@ -36,6 +36,8 @@
     "@hcaptcha/react-hcaptcha": "^2.0.2",
     "@hocuspocus/provider": "^2.13.0",
     "@hocuspocus/server": "^2.13.0",
+    "@livekit/components-react": "^2.9.20",
+    "@livekit/components-styles": "^1.2.0",
     "@mantine/core": "^7.11.0",
     "@mantine/hooks": "^7.11.0",
     "@prisma/client": "^5.22.0",

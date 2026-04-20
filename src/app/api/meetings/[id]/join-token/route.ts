@@ -219,7 +219,7 @@ export const GET = apiHandler(async (req: NextRequest, ctx) => {
   const isCreator = meeting.task?.createdById === authenticatedUserId || meeting.interview?.interviewers.some(u => u.id === authenticatedUserId) || meeting.createdById === authenticatedUserId;
   const isModerator = MANAGER_ROLES.includes(userRole) || isCreator;
 
-  const token = generateLiveKitToken(meeting.liveKitRoomId, {
+  const token = await generateLiveKitToken(meeting.liveKitRoomId, {
     id: authenticatedUserId,
     name: dbUser.name,
     isModerator,

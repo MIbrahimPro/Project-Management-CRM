@@ -28,11 +28,11 @@ export interface LiveKitTokenOptions {
  * Generate a LiveKit access token for a user
  * Tokens expire after 4 hours by default
  */
-export function generateLiveKitToken(
+export async function generateLiveKitToken(
   roomName: string,
   user: LiveKitUser,
   options: LiveKitTokenOptions = {}
-): string {
+): Promise<string> {
   const { apiKey, apiSecret } = getLiveKitConfig();
 
   // In LiveKit v2+, we use AccessToken directly
@@ -55,7 +55,7 @@ export function generateLiveKitToken(
     roomAdmin: user.isModerator,
   });
 
-  return at.toJwt();
+  return await at.toJwt();
 }
 
 export function getLiveKitUrl(): string {
