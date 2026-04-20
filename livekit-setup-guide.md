@@ -149,35 +149,16 @@ If your CRM is on a custom domain, you may need to configure CORS in LiveKit Clo
 
 ---
 
-## Step 9: Enable Server-Side Recording (Egress)
-> [!IMPORTANT]
-> LiveKit Cloud recording (Egress) requires a paid plan (billing enabled) and external storage configuration.
+## Step 9: Meeting Recordings (Manual Upload)
+To keep the CRM 100% free and avoid LiveKit Cloud recording fees (~$0.04/min), I have implemented a **Manual Upload** system for meetings:
 
-To enable automatic server-side recording that "just works" without user clicks:
-
-1. **Configure Storage**: 
-   - Go to **LiveKit Cloud Dashboard** -> **Settings** -> **Egress**.
-   - Choose **S3** as the destination.
-   - Enter your **Supabase S3-compatible credentials**:
-     - **Endpoint**: `https://<project-id>.supabase.co/storage/v1/s3`
-     - **Access Key**: Your Supabase project access key.
-     - **Secret Key**: Your Supabase project secret key.
-     - **Bucket**: `meetings` (ensure this bucket exists in Supabase Storage and is public or has correct RLS).
-
-2. **Triggering via API**:
-   - I have provided `startServerRecording(roomName, meetingId)` in `src/lib/livekit.ts`.
-   - You can call this in `src/app/api/meetings/start/route.ts` when a meeting is created to start recording automatically.
-
-3. **Costs**:
-   - LiveKit Cloud charges ~$0.04/min for Composite Egress (recording the whole room).
-   - Ensure your billing is set up or you have sufficient credits.
+1. **Record Locally**: Use any high-quality tool of your choice (OBS, Zoom, Loom, etc.) to record your meeting.
+2. **Upload to CRM**: Once the meeting ends, go to the **Past Meetings** list in the project and click the **Upload Rec** button that appears when you hover over a meeting card.
+3. **Storage**: The file will be stored in your **Supabase Storage** (which is free up to 1GB) and automatically linked to the meeting history.
 
 ---
 
-## Step 10: Manual Upload (Fallback)
-If you prefer to avoid LiveKit Cloud recording costs, I have implemented a **Manual Upload** button on the Past Meetings page. This allows you to upload high-quality local recordings (from OBS, etc.) which are then sorted and stored in the CRM.
-
-For some API calls, you'll need the Project ID:
+## Step 10: Get Your Project ID
 
 1. In LiveKit Cloud, go to your project
 2. Navigate to **Project Settings**
