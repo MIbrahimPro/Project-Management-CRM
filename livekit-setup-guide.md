@@ -149,20 +149,33 @@ If your CRM is on a custom domain, you may need to configure CORS in LiveKit Clo
 
 ---
 
-## Step 9: Enable Recording (Optional)
+## Step 9: Enable Server-Side Recording (Egress)
+> [!IMPORTANT]
+> LiveKit Cloud recording (Egress) requires a paid plan (billing enabled) and external storage configuration.
 
-LiveKit Cloud recording settings are automatic. To customize:
+To enable automatic server-side recording that "just works" without user clicks:
 
-1. Go to your project in LiveKit Cloud
-2. Navigate to **Recording Settings**
-3. Configure:
-   - **Storage Provider**: S3 (default) or use LiveKit's built-in storage
-   - **Recording Format**: MP4 (default) or WEBM
-   - **Retention**: Set days to keep recordings
+1. **Configure Storage**: 
+   - Go to **LiveKit Cloud Dashboard** -> **Settings** -> **Egress**.
+   - Choose **S3** as the destination.
+   - Enter your **Supabase S3-compatible credentials**:
+     - **Endpoint**: `https://<project-id>.supabase.co/storage/v1/s3`
+     - **Access Key**: Your Supabase project access key.
+     - **Secret Key**: Your Supabase project secret key.
+     - **Bucket**: `meetings` (ensure this bucket exists in Supabase Storage and is public or has correct RLS).
+
+2. **Triggering via API**:
+   - I have provided `startServerRecording(roomName, meetingId)` in `src/lib/livekit.ts`.
+   - You can call this in `src/app/api/meetings/start/route.ts` when a meeting is created to start recording automatically.
+
+3. **Costs**:
+   - LiveKit Cloud charges ~$0.04/min for Composite Egress (recording the whole room).
+   - Ensure your billing is set up or you have sufficient credits.
 
 ---
 
-## Step 10: Get Your Project ID
+## Step 10: Manual Upload (Fallback)
+If you prefer to avoid LiveKit Cloud recording costs, I have implemented a **Manual Upload** button on the Past Meetings page. This allows you to upload high-quality local recordings (from OBS, etc.) which are then sorted and stored in the CRM.
 
 For some API calls, you'll need the Project ID:
 

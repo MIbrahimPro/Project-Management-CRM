@@ -1,4 +1,4 @@
-import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
+import { AccessToken, RoomServiceClient, EgressClient, EncodedFileOutput } from "livekit-server-sdk";
 
 const LIVEKIT_URL = process.env.LIVEKIT_URL ?? "";
 const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY ?? "";
@@ -143,5 +143,45 @@ export async function updateParticipantMetadata(
     await roomService.updateParticipant(roomName, identity, { metadata });
   } catch (error) {
     console.error(`Failed to update metadata for ${identity}:`, error);
+  }
+}
+
+/**
+ * Trigger server-side recording (Egress)
+ * Requires LiveKit Cloud billing enabled and S3 configuration
+ */
+export async function startServerRecording(roomName: string, meetingId: string): Promise<string | null> {
+  const { url, apiKey, apiSecret } = getLiveKitConfig();
+  const egressClient = new EgressClient(url, apiKey, apiSecret);
+
+  try {
+    // This assumes you have configured an S3-compatible bucket in LiveKit Cloud settings
+    // with a bucket named 'meetings' or similar.
+    const output = new EncodedFileOutput({
+      fileType: 1, // MP4
+      filepath: `recordings/${meetingId}.mp4`,
+      // These would normally be configured in the LiveKit Dashboard,
+      // but can also be overridden here if needed.
+    });
+
+    const info = await egressClient.startRoomCompositeEgress(roomName, {
+      file: output,
+    });
+
+    return info.egressId || null;
+  } catch (error) {
+    console.error(`Failed to start server-side recording for room ${roomName}:`, error);
+    return null;
+  }
+}
+
+export async function stopServerRecording(egressId: string): Promise<void> {
+  const { url, apiKey, apiSecret } = getLiveKitConfig();
+  const egressClient = new EgressClient(url, apiKey, apiSecret);
+
+  try {
+    await egressClient.stopEgress(egressId);
+  } catch (error) {
+    console.error(`Failed to stop egress ${egressId}:`, error);
   }
 }
