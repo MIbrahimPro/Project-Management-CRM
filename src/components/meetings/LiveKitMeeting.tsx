@@ -25,6 +25,9 @@ import {
   Search,
   Settings,
   Users,
+  Circle,
+  Square,
+  Download,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import MeetingPreJoin from "./MeetingPreJoin";
@@ -56,6 +59,12 @@ interface SearchUser {
   profilePicUrl: string | null;
 }
 
+function formatDuration(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
 export default function LiveKitMeeting({
   meetingId,
   projectId,
@@ -85,6 +94,83 @@ export default function LiveKitMeeting({
   const [invitingUserId, setInvitingUserId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [participantsInMeeting, setParticipantsInMeeting] = useState<SearchUser[]>([]);
+
+  // Recording State
+  const [isRecording, setIsRecording] = useState(false);
+  const [recorder, setRecorder] = useState<MediaRecorder | null>(null);
+  const [recordingStartTime, setRecordingStartTime] = useState<number | null>(null);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isRecording) {
+      interval = setInterval(() => {
+        setRecordingDuration(Math.floor((Date.now() - (recordingStartTime || Date.now())) / 1000));
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isRecording, recordingStartTime]);
+
+  const stopRecording = useCallback(() => {
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
+    }
+    setIsRecording(false);
+    setRecorder(null);
+    setRecordingStartTime(null);
+    setRecordingDuration(0);
+  }, [recorder]);
+
+  const startRecording = async () => {
+    try {
+      // Capture the current tab
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { displaySurface: "browser" },
+        audio: true,
+      } as any);
+
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: "video/webm;codecs=vp9,opus",
+      });
+
+      const chunks: Blob[] = [];
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        // Stop all tracks
+        stream.getTracks().forEach((track) => track.stop());
+
+        // Create download link
+        const blob = new Blob(chunks, { type: "video/webm" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `Meeting_Recording_${title.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.webm`;
+        a.click();
+        URL.revokeObjectURL(url);
+        
+        toast.success("Recording saved to Downloads", {
+          icon: "💾",
+          style: { background: "hsl(var(--b2))", color: "hsl(var(--bc))" },
+        });
+      };
+
+      mediaRecorder.start();
+      setRecorder(mediaRecorder);
+      setIsRecording(true);
+      setRecordingStartTime(Date.now());
+      
+      toast.success("Recording started. Please ensure you are sharing this tab.", {
+        icon: "⏺️",
+        style: { background: "hsl(var(--b2))", color: "hsl(var(--bc))" },
+      });
+    } catch (err) {
+      console.error("Failed to start recording:", err);
+      toast.error("Recording failed. Make sure to allow screen capture.");
+    }
+  };
 
   const syncPresence = useCallback(async (method: "POST" | "DELETE") => {
     if (!meetingId) return;
@@ -249,6 +335,26 @@ export default function LiveKitMeeting({
               )}
             </ul>
           </div>
+
+          {/* Recording Button */}
+          <button 
+            className={`btn btn-sm gap-2 rounded-xl border-white/10 shadow-lg ${
+              isRecording ? "btn-error animate-pulse" : "bg-black/50 hover:bg-white/20 text-white"
+            }`}
+            onClick={isRecording ? stopRecording : startRecording}
+          >
+            {isRecording ? (
+              <>
+                <Square className="w-4 h-4 fill-current" />
+                <span>{formatDuration(recordingDuration)}</span>
+              </>
+            ) : (
+              <>
+                <Circle className="w-4 h-4 fill-current text-error" />
+                <span className="hidden sm:inline">Record</span>
+              </>
+            )}
+          </button>
 
           {/* Invite Button */}
           {canInviteUsers && (
