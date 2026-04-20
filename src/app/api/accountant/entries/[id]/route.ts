@@ -6,7 +6,7 @@ import { logAction } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
-const FINANCE_ROLES = ["SUPER_ADMIN", "ADMIN", "ACCOUNTANT"];
+const FINANCE_ROLES = ["ADMIN", "ACCOUNTANT"];
 
 const patchSchema = z.object({
   isVoid: z.boolean().optional(),

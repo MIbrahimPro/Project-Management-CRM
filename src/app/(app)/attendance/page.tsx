@@ -64,7 +64,7 @@ export default function AttendancePage() {
   const [mgmtSearch, setMgmtSearch] = useState("");
   const [mgmtFilter, setMgmtFilter] = useState<"ALL" | "ABSENT" | "ACTIVE">("ALL");
 
-  const isManager = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(userRole);
+  const isManager = ["ADMIN", "PROJECT_MANAGER"].includes(userRole);
 
   useEffect(() => {
     fetch("/api/users/me")
@@ -73,7 +73,7 @@ export default function AttendancePage() {
         const role = userRes.data?.role ?? "";
         setUserRole(role);
         
-        const isManager = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(role);
+        const isManager = ["ADMIN", "PROJECT_MANAGER"].includes(role);
         const promises = [
           fetch("/api/attendance/status").then((r) => r.json()),
           fetch("/api/attendance").then((r) => r.json()),

@@ -114,12 +114,8 @@ export default function ProjectVaultPage() {
               Project Vault
             </h1>
             <p className="text-sm text-base-content/60 mt-1 max-w-2xl">
-              Store API keys, environment variables, and other secrets here. Anything you store
-              in the vault is kept private to project members and is excluded from the AI assistant.
-              <br />
-              <span className="text-warning">
-                Secrets stored anywhere else (chat, docs, descriptions) may be visible to AI — always use the vault.
-              </span>
+              Store API keys, environment variables, and other secrets here.
+              Do not put secret or API key anywhere else in the Project.
             </p>
           </div>
           <button className="btn btn-primary btn-sm gap-2" onClick={() => setModalOpen(true)}>

@@ -2,40 +2,57 @@ import { Prisma, PrismaClient, UserRole } from "@prisma/client";
 
 type DbClient = PrismaClient | Prisma.TransactionClient;
 
-const MANAGER_ROLES: UserRole[] = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"];
+// Roles auto-added to the TEAM room (everyone except client).
+// SUPER_ADMIN is a hidden/technical role — never auto-added to any room.
+const TEAM_MANAGER_ROLES: UserRole[] = ["ADMIN", "PROJECT_MANAGER"];
+
+// Roles allowed in the CLIENT room (client + managers only — no devs, designers, HR, etc.)
+const CLIENT_ROOM_ROLES: UserRole[] = ["ADMIN", "PROJECT_MANAGER"];
 
 function uniqueIds(ids: Array<string | null | undefined>): string[] {
   return Array.from(new Set(ids.filter((id): id is string => Boolean(id))));
 }
 
 async function getProjectParticipants(db: DbClient, projectId: string) {
-  const [project, managers] = await Promise.all([
+  const [project, teamManagers, clientRoomManagers] = await Promise.all([
     db.project.findUnique({
       where: { id: projectId },
       select: {
         id: true,
         clientId: true,
         createdById: true,
-        members: { select: { userId: true } },
+        members: { select: { userId: true, user: { select: { role: true } } } },
       },
     }),
+    // Managers for the team room
     db.user.findMany({
-      where: { role: { in: MANAGER_ROLES }, isActive: true },
+      where: { role: { in: TEAM_MANAGER_ROLES }, isActive: true },
+      select: { id: true },
+    }),
+    // Managers for the client room (strictly ADMIN + PROJECT_MANAGER)
+    db.user.findMany({
+      where: { role: { in: CLIENT_ROOM_ROLES }, isActive: true },
       select: { id: true },
     }),
   ]);
 
   if (!project) return null;
 
-  const managerIds = managers.map((m) => m.id);
+  const teamManagerIds = teamManagers.map((m) => m.id);
+  const clientManagerIds = clientRoomManagers.map((m) => m.id);
+
+  // Team room: all project members + managers, minus the client, minus SUPER_ADMIN
   const baseTeamIds = uniqueIds([
     project.createdById,
-    ...project.members.map((m) => m.userId),
-    ...managerIds,
+    ...project.members
+      .filter((m) => m.user.role !== "SUPER_ADMIN")
+      .map((m) => m.userId),
+    ...teamManagerIds,
   ]);
   const teamRoomUserIds = baseTeamIds.filter((id) => id !== project.clientId);
 
-  const clientRoomUserIds = uniqueIds([project.clientId, ...managerIds]);
+  // Client room: ONLY client + ADMIN + PROJECT_MANAGER. No devs, designers, HR, etc.
+  const clientRoomUserIds = uniqueIds([project.clientId, ...clientManagerIds]);
 
   return {
     teamRoomUserIds,

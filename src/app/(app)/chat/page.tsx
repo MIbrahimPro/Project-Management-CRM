@@ -49,7 +49,7 @@ const ROLE_LABELS: Record<string, string> = {
   HR: "HR", ACCOUNTANT: "Accountant", SALES: "Sales", CLIENT: "Client",
 };
 
-const MANAGER_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"];
+const MANAGER_ROLES = ["ADMIN", "PROJECT_MANAGER"];
 
 type StartMeetingResponse = {
   meetingId: string;

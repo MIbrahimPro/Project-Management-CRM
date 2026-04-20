@@ -4,14 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
-const JitsiMeeting = dynamic(() => import("@/components/meetings/JitsiMeeting"), { ssr: false });
+const LiveKitMeeting = dynamic(() => import("@/components/meetings/LiveKitMeeting"), { ssr: false });
 
 type MeetingJoinData = {
   meetingId: string;
   title: string;
-  jitsiRoomId: string;
-  domain: string;
-  serverUrl?: string;
+  liveKitRoomId: string;
+  url: string;
   token: string | null;
   isModerator: boolean;
   canInviteUsers: boolean;
@@ -105,17 +104,17 @@ export default function GuestMeetingJoinPage() {
   }
 
   return (
-    <JitsiMeeting
+    <LiveKitMeeting
       meetingId={meeting.meetingId}
-      domain={meeting.domain}
-      serverUrl={meeting.serverUrl}
-      roomName={meeting.jitsiRoomId}
+      url={meeting.url}
+      roomName={meeting.liveKitRoomId}
       title={meeting.title}
       token={meeting.token}
       displayName={meeting.displayName ?? (requestedName || "Guest")}
       email={meeting.email}
-      isGuest
+      isGuest={true}
       isModerator={meeting.isModerator}
+      skipPrejoin={true}
       canInviteUsers={meeting.canInviteUsers}
       canInviteClients={meeting.canInviteClients}
       onClose={handleClose}

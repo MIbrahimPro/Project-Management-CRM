@@ -7,7 +7,7 @@ import { sendNotification } from "@/lib/notify";
 
 export const dynamic = "force-dynamic";
 
-const HR_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "HR"];
+const HR_ROLES = ["ADMIN", "PROJECT_MANAGER", "HR"];
 
 const patchSchema = z.object({
   status: z.enum([
@@ -66,7 +66,7 @@ export const PATCH = apiHandler(async (req: NextRequest, ctx) => {
     // Notify all HR and Admins to upload contract
     const hrUsers = await prisma.user.findMany({
       where: {
-        role: { in: ["SUPER_ADMIN", "ADMIN", "HR"] },
+        role: { in: ["ADMIN", "HR"] },
         isActive: true,
       },
       select: { id: true },

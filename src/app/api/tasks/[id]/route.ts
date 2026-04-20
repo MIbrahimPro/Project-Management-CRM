@@ -48,7 +48,7 @@ export const GET = apiHandler(async (req: NextRequest, ctx) => {
   if (!task) return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
 
   // Access: manager or assignee or creator
-  const isManager = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(userRole);
+  const isManager = ["ADMIN", "PROJECT_MANAGER"].includes(userRole);
   const canAccess =
     isManager ||
     task.createdById === userId ||
@@ -71,14 +71,15 @@ export const PATCH = apiHandler(async (req: NextRequest, ctx) => {
     where: { id },
     select: {
       id: true,
+      status: true,
       createdById: true,
-      assignees: { select: { userId: true } },
+      assignees: { select: { userId: true, user: { select: { role: true } } } },
       chatRooms: { select: { id: true }, take: 1 },
     },
   });
   if (!task) return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
 
-  const isManager = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(userRole);
+  const isManager = ["ADMIN", "PROJECT_MANAGER"].includes(userRole);
   const isAssignee = task.assignees.some((a) => a.userId === userId);
   if (!isManager && task.createdById !== userId && !isAssignee) forbidden();
 
@@ -92,12 +93,22 @@ export const PATCH = apiHandler(async (req: NextRequest, ctx) => {
     if (body.status !== "DONE") updateData.completedAt = null;
   }
 
-  // Handle assignee updates (replace all)
+  // Handle assignee updates (replace all, with protection rules)
   if (body.assigneeIds !== undefined) {
+    // Rule: nobody can be removed from a DONE task
+    if (task.status === "DONE") {
+      return NextResponse.json({ error: "Cannot modify assignees of a completed task", code: "FORBIDDEN" }, { status: 403 });
+    }
+    // Rule: admin/manager assignees cannot be removed
+    const protectedUserIds = task.assignees
+      .filter((a) => ["ADMIN", "PROJECT_MANAGER"].includes(a.user.role))
+      .map((a) => a.userId);
+    const mergedAssigneeIds = Array.from(new Set([...body.assigneeIds, ...protectedUserIds]));
+
     await prisma.taskAssignee.deleteMany({ where: { taskId: id } });
-    if (body.assigneeIds.length > 0) {
+    if (mergedAssigneeIds.length > 0) {
       await prisma.taskAssignee.createMany({
-        data: body.assigneeIds.map((uid) => ({ taskId: id, userId: uid })),
+        data: mergedAssigneeIds.map((uid) => ({ taskId: id, userId: uid })),
         skipDuplicates: true,
       });
     }
@@ -105,9 +116,7 @@ export const PATCH = apiHandler(async (req: NextRequest, ctx) => {
     if (task.chatRooms[0]) {
       const roomId = task.chatRooms[0].id;
       await prisma.chatRoomMember.deleteMany({ where: { roomId } });
-      const allMembers = [task.createdById, ...body.assigneeIds].filter(
-        (v, i, a) => a.indexOf(v) === i
-      );
+      const allMembers = Array.from(new Set([task.createdById, ...mergedAssigneeIds]));
       await prisma.chatRoomMember.createMany({
         data: allMembers.map((uid) => ({ roomId, userId: uid })),
         skipDuplicates: true,

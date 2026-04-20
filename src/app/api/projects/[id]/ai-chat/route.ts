@@ -11,12 +11,15 @@ const bodySchema = z.object({
   content: z.string().min(1).max(10000),
 });
 
-export const GET = apiHandler(async (req: NextRequest, { params }) => {
+export const GET = apiHandler(async (req: NextRequest, ctx) => {
   const userId = req.headers.get("x-user-id");
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const projectId = ctx?.params?.id;
+  if (!projectId) return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
+
   const conversation = await prisma.projectAIConversation.findUnique({
-    where: { projectId: params.id },
+    where: { projectId },
     include: {
       messages: {
         orderBy: { createdAt: "asc" },
@@ -28,12 +31,14 @@ export const GET = apiHandler(async (req: NextRequest, { params }) => {
   return NextResponse.json({ data: conversation?.messages ?? [] });
 });
 
-export const POST = apiHandler(async (req: NextRequest, { params }) => {
+export const POST = apiHandler(async (req: NextRequest, ctx) => {
   const userId = req.headers.get("x-user-id");
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const projectId = ctx?.params?.id;
+  if (!projectId) return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
+
   const body = bodySchema.parse(await req.json());
-  const projectId = params.id;
 
   // 1. Ensure conversation exists
   let conversation = await prisma.projectAIConversation.findUnique({
@@ -67,10 +72,18 @@ export const POST = apiHandler(async (req: NextRequest, { params }) => {
     content: m.content,
   }));
 
-  const systemPrompt = `You are the DevRolin Project Assistant. 
-You have access to tools to read project data, milestones, tasks, chat, and documents.
-Be concise but helpful. Always check the project state using tools if you are unsure.
-Shared conversation for the whole team.`;
+  // Fetch basic project info to prime the system prompt
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { title: true, status: true },
+  });
+
+  const systemPrompt = `You are the DevRolin Project Assistant for project "${project?.title ?? projectId}" (ID: ${projectId}, status: ${project?.status ?? "unknown"}).
+You have access to tools: get_project_data, get_tasks, get_documents, get_questions, get_recent_chat.
+Always pass projectId="${projectId}" when calling these tools.
+When a user asks about this project, proactively call the relevant tool(s) to get up-to-date data before answering.
+Never say you cannot find the project — you have the project ID and tools to retrieve all information.
+Be concise but thorough. This is a shared team conversation.`;
 
   // 4. Tool calling loop (max 5 iterations)
   let currentMessages = [...aiMessages];

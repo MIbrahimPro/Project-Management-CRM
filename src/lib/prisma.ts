@@ -8,16 +8,17 @@ const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
  * Append a conservative connection_limit when missing.
  */
 function withPooledConnectionLimit(url: string): string {
-  if (!url || url.includes("connection_limit=")) return url;
+  if (!url) return url;
   try {
     const u = new URL(url);
     const host = u.hostname;
     const looksLikeSupabase =
       host.includes("supabase.co") || host.includes("supabase.com") || host.includes("pooler");
     if (looksLikeSupabase) {
-      if (!u.searchParams.has("connection_limit")) {
-        u.searchParams.set("connection_limit", "5");
-      }
+      const currentLimit = u.searchParams.get("connection_limit");
+      const parsedLimit = currentLimit ? Number(currentLimit) : NaN;
+      const safeLimit = Number.isFinite(parsedLimit) ? Math.min(parsedLimit, 5) : 5;
+      u.searchParams.set("connection_limit", `${safeLimit}`);
       if (!u.searchParams.has("pool_timeout")) {
         u.searchParams.set("pool_timeout", "20");
       }

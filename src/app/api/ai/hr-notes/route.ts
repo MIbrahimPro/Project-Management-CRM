@@ -6,7 +6,7 @@ import { callAI } from "@/lib/ai";
 
 export const dynamic = "force-dynamic";
 
-const HR_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "HR"];
+const HR_ROLES = ["ADMIN", "PROJECT_MANAGER", "HR"];
 
 const bodySchema = z.object({
   candidateId: z.string(),

@@ -73,13 +73,18 @@ export default function TaskDetailPage() {
       fetch("/api/users/me").then((r) => r.json()),
     ])
       .then(([taskRes, chatRes, userRes]: [
-        { data?: TaskDetail; error?: string },
+        { data?: TaskDetail & { projectId?: string }; error?: string },
         { data?: { id: string }; error?: string },
         { data?: CurrentUser },
       ]) => {
         if (!taskRes.data) {
           toast.error("Task not found", { style: TOAST_ERROR_STYLE });
           router.push("/tasks");
+          return;
+        }
+        // If this task belongs to a project, redirect to the project tasks view
+        if (taskRes.data.projectId) {
+          router.replace(`/projects/${taskRes.data.projectId}/tasks/${taskId}`);
           return;
         }
         setTask(taskRes.data);

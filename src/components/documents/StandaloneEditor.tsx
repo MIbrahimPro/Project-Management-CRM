@@ -1,11 +1,20 @@
 "use client";
 
-import { forwardRef, useImperativeHandle, useEffect, useRef } from "react";
-import { useCreateBlockNote } from "@blocknote/react";
+import { forwardRef, useImperativeHandle, useEffect, useRef, useState, useCallback } from "react";
+import {
+  useCreateBlockNote,
+  FormattingToolbar,
+  FormattingToolbarController,
+  getDefaultReactSlashMenuItems,
+  type DefaultReactSuggestionItem,
+} from "@blocknote/react";
+import { SuggestionMenuControllerSolid } from "@/components/blocknote/SuggestionMenuControllerSolid";
+import { filterSuggestionItems } from "@blocknote/core";
 import { BlockNoteView } from "@blocknote/mantine";
 import "@blocknote/mantine/style.css";
 import "@/styles/blocknote-overrides.css";
 import { useTheme } from "@/components/providers/ThemeProvider";
+import { Sparkles } from "lucide-react";
 import type { Block } from "@blocknote/core";
 
 const LIGHT_THEMES = ["neutral-light", "light", "corporate", "pale"];
@@ -21,10 +30,6 @@ export interface StandaloneEditorHandle {
   getContent: () => string;
 }
 
-/**
- * Parse a stored BlockNote JSON string into an array of Blocks.
- * Returns undefined for empty/invalid input so the editor creates a default empty paragraph.
- */
 function tryParseBlocks(raw: string): Block[] | undefined {
   if (!raw || raw.trim() === "") return undefined;
   try {
@@ -48,6 +53,13 @@ const StandaloneEditor = forwardRef<StandaloneEditorHandle, StandaloneEditorProp
   function StandaloneEditor({ initialContent = "", readOnly = false, onChange }, ref) {
     const { theme } = useTheme();
     const bnTheme = LIGHT_THEMES.includes(theme) ? "light" : "dark";
+
+    const [selectedText, setSelectedText] = useState("");
+    const [selectionBusy, setSelectionBusy] = useState<null | "fix">(null);
+    const [aiPromptOpen, setAiPromptOpen] = useState(false);
+    const [aiPrompt, setAiPrompt] = useState("");
+    const [aiBusy, setAiBusy] = useState(false);
+    const wrapperRef = useRef<HTMLDivElement | null>(null);
 
     const editor = useCreateBlockNote({
       initialContent: tryParseBlocks(initialContent),
@@ -90,14 +102,177 @@ const StandaloneEditor = forwardRef<StandaloneEditorHandle, StandaloneEditorProp
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editor]);
 
+    useEffect(() => {
+      return editor.onSelectionChange(() => {
+        setSelectedText(editor.getSelectedText().trim());
+      });
+    }, [editor]);
+
+    const getEditorPlainText = useCallback(() => {
+      if (!wrapperRef.current) return "";
+      const el = wrapperRef.current.querySelector(".bn-editor");
+      return (el?.textContent ?? "").trim();
+    }, []);
+
+    const runFixSelection = useCallback(async () => {
+      const source = selectedText.trim();
+      if (!source || readOnly) return;
+      setSelectionBusy("fix");
+      try {
+        const res = await fetch("/api/ai/document", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "improve",
+            prompt: `Professionalize this text for a workplace document:\n\n${source}`,
+            context: `Document context:\n${getEditorPlainText().slice(0, 5000)}`,
+          }),
+        });
+        const data = (await res.json()) as { data?: { content?: string } };
+        const output = data.data?.content?.trim() ?? "";
+        if (output) editor.insertInlineContent(output);
+      } finally {
+        setSelectionBusy(null);
+      }
+    }, [editor, getEditorPlainText, readOnly, selectedText]);
+
+    const runAiInsert = useCallback(async () => {
+      const prompt = aiPrompt.trim();
+      if (!prompt || readOnly) return;
+      setAiBusy(true);
+      try {
+        const res = await fetch("/api/ai/document", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "draft",
+            prompt: `Write content to insert into the document.\nUser request: ${prompt}`,
+            context: `Document context:\n${getEditorPlainText().slice(0, 5000)}`,
+          }),
+        });
+        const data = (await res.json()) as { data?: { content?: string } };
+        const output = data.data?.content?.trim() ?? "";
+        if (output) {
+          const blocks = await editor.tryParseMarkdownToBlocks(output);
+          const cursorBlock = editor.getTextCursorPosition().block;
+          editor.insertBlocks(blocks, cursorBlock, "after");
+        }
+        setAiPromptOpen(false);
+        setAiPrompt("");
+      } finally {
+        setAiBusy(false);
+      }
+    }, [aiPrompt, editor, getEditorPlainText, readOnly]);
+
+    const slashItems = useCallback(
+      async (query: string): Promise<DefaultReactSuggestionItem[]> => {
+        const defaults = getDefaultReactSlashMenuItems(editor).filter((item) => {
+          const haystack = [
+            item.title,
+            item.subtext,
+            ...(item.aliases ?? []),
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+
+          // Emoji slash command is intentionally disabled for now.
+          return !/(emoji|emoticon|smile|smiley)/.test(haystack);
+        });
+        const aiItem: DefaultReactSuggestionItem = {
+          title: "AI: Write with prompt",
+          subtext: "Generate and insert content using AI",
+          onItemClick: () => setAiPromptOpen(true),
+          aliases: ["ai", "generate", "write"],
+          group: "AI",
+        };
+        return filterSuggestionItems([...defaults, aiItem], query);
+      },
+      [editor]
+    );
+
     return (
-      <div className="bn-editor-wrapper">
+      <div className="bn-editor-wrapper flex flex-col" ref={wrapperRef}>
+        {/* AI toolbar strip */}
+        {!readOnly && (
+          <div className="flex items-center gap-1 px-2 py-1 bg-base-200/60 border-b border-base-300 flex-shrink-0">
+            <span className="text-[10px] font-semibold text-base-content/40 uppercase tracking-wide mr-1">AI</span>
+            <button
+              className="btn btn-ghost btn-xs gap-1 text-secondary"
+              onClick={() => void runFixSelection()}
+              disabled={selectionBusy !== null || !selectedText}
+              title={selectedText ? "Fix / professionalize selected text" : "Select text first"}
+            >
+              {selectionBusy === "fix" ? <span className="loading loading-spinner loading-xs" /> : <Sparkles className="w-3 h-3" />}
+              Fix Selection
+            </button>
+            <div className="w-px h-3 bg-base-300 mx-0.5" />
+            <button
+              className="btn btn-ghost btn-xs gap-1 text-primary"
+              onClick={() => setAiPromptOpen(true)}
+              title="Write with AI"
+            >
+              <Sparkles className="w-3 h-3" />
+              Write…
+            </button>
+          </div>
+        )}
+
         <BlockNoteView
           editor={editor}
           editable={!readOnly}
           theme={bnTheme}
           className="bn-standalone min-h-[160px]"
-        />
+          slashMenu={false}
+          formattingToolbar={false}
+        >
+          <SuggestionMenuControllerSolid triggerCharacter="/" getItems={slashItems} />
+          <FormattingToolbarController
+            formattingToolbar={(props) => (
+              <FormattingToolbar {...props}>
+                <div className="flex items-center gap-1 border-l border-base-300 ml-1 pl-1">
+                  <button
+                    className="bn-button hover:bg-base-300 transition-colors"
+                    onClick={() => void runFixSelection()}
+                    title="AI Fix"
+                    disabled={selectionBusy !== null}
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-secondary" />
+                    <span className="text-[10px] ml-1">Fix</span>
+                  </button>
+                </div>
+              </FormattingToolbar>
+            )}
+          />
+        </BlockNoteView>
+
+        {/* AI write modal */}
+        <dialog className={`modal ${aiPromptOpen ? "modal-open" : ""}`}>
+          <div className="modal-box bg-base-200 max-w-lg">
+            <h3 className="font-semibold text-base-content text-lg mb-2">AI Write</h3>
+            <p className="text-sm text-base-content/60 mb-3">
+              Describe what to write. Generated content will be inserted at the cursor.
+            </p>
+            <textarea
+              className="textarea textarea-bordered bg-base-100 w-full min-h-24"
+              placeholder="e.g. Write a summary of the task requirements..."
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void runAiInsert();
+              }}
+              autoFocus
+            />
+            <div className="modal-action">
+              <button className="btn btn-ghost" onClick={() => { setAiPromptOpen(false); setAiPrompt(""); }}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => void runAiInsert()} disabled={aiBusy || !aiPrompt.trim()}>
+                {aiBusy && <span className="loading loading-spinner loading-xs" />}
+                Insert
+              </button>
+            </div>
+          </div>
+          <div className="modal-backdrop" onClick={() => setAiPromptOpen(false)} />
+        </dialog>
       </div>
     );
   },

@@ -1,11 +1,12 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { Check, History, Plus, Sparkles, X } from "lucide-react";
+import { Check, History, Pencil, Plus, Sparkles, Trash2, User, X } from "lucide-react";
 import toast from "react-hot-toast";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
+import { useSocket } from "@/hooks/useSocket";
 
 dayjs.extend(relativeTime);
 
@@ -19,6 +20,8 @@ type Answer = {
   user: { id: string; name: string; role: string };
 };
 
+type QuestionCreator = { id: string; name: string; role: string };
+
 type Question = {
   id: string;
   text: string;
@@ -27,6 +30,7 @@ type Question = {
   isAiGenerated: boolean;
   answers: Answer[];
   milestone: { id: string; order: number; title: string } | null;
+  createdBy?: QuestionCreator | null;
 };
 
 type Milestone = { id: string; order: number; title: string };
@@ -48,13 +52,22 @@ function QuestionsInner() {
   const [newText, setNewText] = useState("");
   const [newPartOf, setNewPartOf] = useState("start");
 
+  // Per-question answering state
   const [answering, setAnswering] = useState<string | null>(null);
-  const [answerText, setAnswerText] = useState("");
+  const [answerTexts, setAnswerTexts] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
   const [showHistory, setShowHistory] = useState<string | null>(null);
 
+  // Edit state
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
+  const [editPartOf, setEditPartOf] = useState("start");
+  const [editSaving, setEditSaving] = useState(false);
+
   const questionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const { socket } = useSocket("/chat");
 
   useEffect(() => {
     Promise.all([
@@ -77,6 +90,58 @@ function QuestionsInner() {
       .finally(() => setLoading(false));
   }, [projectId]);
 
+  // Socket listeners for real-time question updates
+  useEffect(() => {
+    if (!socket || !projectId) return;
+
+    const roomKey = `project_questions:${projectId}`;
+    socket.emit("join_room", roomKey);
+
+    const onQuestionAdded = (q: Question) => {
+      setQuestions((prev) => {
+        if (prev.some((existing) => existing.id === q.id)) return prev;
+        return [...prev, { ...q, answers: q.answers ?? [] }];
+      });
+    };
+
+    const onQuestionApproved = ({ questionId }: { questionId: string }) => {
+      setQuestions((prev) =>
+        prev.map((q) => (q.id === questionId ? { ...q, isApproved: true } : q))
+      );
+    };
+
+    const onQuestionAnswered = ({ questionId, answer }: { questionId: string; answer: Answer }) => {
+      setQuestions((prev) =>
+        prev.map((q) =>
+          q.id === questionId ? { ...q, answers: [answer, ...(q.answers ?? [])] } : q
+        )
+      );
+    };
+
+    const onQuestionUpdated = (q: Question) => {
+      setQuestions((prev) => prev.map((existing) => (existing.id === q.id ? q : existing)));
+    };
+
+    const onQuestionDeleted = ({ questionId }: { questionId: string }) => {
+      setQuestions((prev) => prev.filter((q) => q.id !== questionId));
+    };
+
+    socket.on("question_added", onQuestionAdded);
+    socket.on("question_approved", onQuestionApproved);
+    socket.on("question_answered", onQuestionAnswered);
+    socket.on("question_updated", onQuestionUpdated);
+    socket.on("question_deleted", onQuestionDeleted);
+
+    return () => {
+      socket.off("question_added", onQuestionAdded);
+      socket.off("question_approved", onQuestionApproved);
+      socket.off("question_answered", onQuestionAnswered);
+      socket.off("question_updated", onQuestionUpdated);
+      socket.off("question_deleted", onQuestionDeleted);
+      socket.emit("leave_room", roomKey);
+    };
+  }, [socket, projectId]);
+
   // Scroll + pulse on ?highlight=
   useEffect(() => {
     if (!highlightId || loading) return;
@@ -91,43 +156,44 @@ function QuestionsInner() {
   }, [highlightId, loading]);
 
   async function approveQuestion(qId: string) {
-    await fetch(`/api/projects/${projectId}/questions/${qId}/approve`, {
-      method: "PATCH",
-    });
-    setQuestions((prev) =>
-      prev.map((q) => (q.id === qId ? { ...q, isApproved: true } : q))
-    );
+    const res = await fetch(`/api/projects/${projectId}/questions/${qId}/approve`, { method: "PATCH" });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { error?: string };
+      toast.error(err.error ?? "Failed to approve", { style: TOAST_ERROR_STYLE });
+      return;
+    }
+    setQuestions((prev) => prev.map((q) => (q.id === qId ? { ...q, isApproved: true } : q)));
     toast.success("Question approved", { style: TOAST_STYLE });
+    // Approval is broadcast from the API (global.io); no client relay needed
   }
 
   async function submitAnswer(qId: string) {
-    if (!answerText.trim()) return;
+    const text = answerTexts[qId]?.trim();
+    if (!text) return;
     setSubmitting(true);
     try {
-      const res = await fetch(
-        `/api/projects/${projectId}/questions/${qId}/answer`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: answerText }),
-        }
-      );
+      const res = await fetch(`/api/projects/${projectId}/questions/${qId}/answer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: text }),
+      });
       const data = (await res.json()) as { data?: Answer; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Failed");
       setQuestions((prev) =>
         prev.map((q) =>
-          q.id === qId
-            ? { ...q, answers: [data.data!, ...q.answers] }
-            : q
+          q.id === qId ? { ...q, answers: [data.data!, ...(q.answers ?? [])] } : q
         )
       );
       setAnswering(null);
-      setAnswerText("");
+      setAnswerTexts((prev) => ({ ...prev, [qId]: "" }));
       toast.success("Answer saved", { style: TOAST_STYLE });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed", {
-        style: TOAST_ERROR_STYLE,
+      socket?.emit("question_action", {
+        room: `project_questions:${projectId}`,
+        type: "question_answered",
+        payload: { questionId: qId, answer: data.data! },
       });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed", { style: TOAST_ERROR_STYLE });
     } finally {
       setSubmitting(false);
     }
@@ -146,20 +212,74 @@ function QuestionsInner() {
       });
       const data = (await res.json()) as { data?: Question; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Failed");
-      setQuestions((prev) => [...prev, data.data!]);
+      const newQ = { ...data.data!, answers: data.data!.answers ?? [] };
+      setQuestions((prev) => [...prev, newQ]);
       setShowAddForm(false);
       setNewText("");
       setNewPartOf("start");
-      toast.success(
-        data.data!.isApproved ? "Question added" : "Submitted for approval",
-        { style: TOAST_STYLE }
-      );
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed", {
-        style: TOAST_ERROR_STYLE,
+      toast.success(newQ.isApproved ? "Question added" : "Submitted for approval", { style: TOAST_STYLE });
+      socket?.emit("question_action", {
+        room: `project_questions:${projectId}`,
+        type: "question_added",
+        payload: newQ,
       });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed", { style: TOAST_ERROR_STYLE });
     }
   }
+
+  async function saveEdit(qId: string) {
+    if (editText.trim().length < 5) {
+      toast.error("Question too short (min 5 chars)", { style: TOAST_ERROR_STYLE });
+      return;
+    }
+    setEditSaving(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/questions/${qId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: editText, partOf: editPartOf }),
+      });
+      const data = (await res.json()) as { data?: Question; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed");
+      setQuestions((prev) => prev.map((q) => (q.id === qId ? data.data! : q)));
+      setEditing(null);
+      toast.success("Question updated", { style: TOAST_STYLE });
+      socket?.emit("question_action", {
+        room: `project_questions:${projectId}`,
+        type: "question_updated",
+        payload: data.data!,
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed", { style: TOAST_ERROR_STYLE });
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  async function deleteQuestion(qId: string) {
+    if (!confirm("Delete this question?")) return;
+    try {
+      const res = await fetch(`/api/projects/${projectId}/questions/${qId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = (await res.json()) as { error?: string };
+        throw new Error(err.error ?? "Failed");
+      }
+      setQuestions((prev) => prev.filter((q) => q.id !== qId));
+      toast.success("Question deleted", { style: TOAST_STYLE });
+      socket?.emit("question_action", {
+        room: `project_questions:${projectId}`,
+        type: "question_deleted",
+        payload: { questionId: qId },
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed", { style: TOAST_ERROR_STYLE });
+    }
+  }
+
+  const handleAnswerTextChange = useCallback((qId: string, value: string) => {
+    setAnswerTexts((prev) => ({ ...prev, [qId]: value }));
+  }, []);
 
   if (loading) {
     return (
@@ -169,16 +289,11 @@ function QuestionsInner() {
     );
   }
 
-  const isManager = user
-    ? ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(user.role)
-    : false;
+  const isManager = user ? ["ADMIN", "PROJECT_MANAGER"].includes(user.role) : false;
   const isClient = user?.role === "CLIENT";
   const canAnswer = isManager || isClient;
 
-  // Group questions: "start" or unrecognised → "Needed to Start"; "milestone_N" → milestone group
-  const startQuestions = questions.filter(
-    (q) => !q.partOf.startsWith("milestone_")
-  );
+  const startQuestions = questions.filter((q) => !q.partOf.startsWith("milestone_"));
   const milestoneGroups: Record<string, Question[]> = {};
   for (const q of questions) {
     if (q.partOf.startsWith("milestone_")) {
@@ -195,68 +310,127 @@ function QuestionsInner() {
     })),
   ];
 
+  function CreatorBadge({ q }: { q: Question }) {
+    if (isClient) return null;
+    if (q.isAiGenerated) {
+      return (
+        <span className="badge badge-ghost badge-xs gap-1">
+          <Sparkles className="w-2.5 h-2.5" />
+          AI
+        </span>
+      );
+    }
+    if (q.createdBy) {
+      return (
+        <span className="badge badge-ghost badge-xs gap-1">
+          <User className="w-2.5 h-2.5" />
+          {q.createdBy.name}
+        </span>
+      );
+    }
+    return null;
+  }
+
   function QuestionCard({ q }: { q: Question }) {
-    const latestAnswer = q.answers[0];
-    const previousAnswers = q.answers.slice(1);
+    const latestAnswer = (q.answers ?? [])[0];
+    const previousAnswers = (q.answers ?? []).slice(1);
+    const currentAnswerText = answerTexts[q.id] ?? "";
+    const isEditingThis = editing === q.id;
+
+    const canEdit = !isClient && (isManager || q.createdBy?.id === user?.id);
+    const canDelete = !isClient && (isManager || (!q.isApproved && q.createdBy?.id === user?.id));
 
     return (
       <div
-        ref={(el) => {
-          questionRefs.current[q.id] = el;
-        }}
+        ref={(el) => { questionRefs.current[q.id] = el; }}
         className={`p-4 rounded-xl border transition-all ${
-          q.isApproved
-            ? "bg-base-200 border-base-300"
-            : "bg-base-300/50 border-warning/30"
+          q.isApproved ? "bg-base-200 border-base-300" : "bg-base-300/50 border-warning/30"
         }`}
       >
-        <div className="flex items-start justify-between gap-2 mb-3">
-          <p className="text-sm font-medium text-base-content flex-1">{q.text}</p>
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            {!q.isApproved &&
-              (isManager ? (
-                <button
-                  className="btn btn-warning btn-xs"
-                  onClick={() => void approveQuestion(q.id)}
-                >
-                  Approve
-                </button>
-              ) : (
-                <span className="badge badge-warning badge-sm">
-                  Pending Approval
-                </span>
-              ))}
-            {q.isAiGenerated && (
-              <span className="badge badge-ghost badge-xs gap-1">
-                <Sparkles className="w-2.5 h-2.5" />
-                AI
-              </span>
-            )}
-          </div>
-        </div>
-
-        {q.isApproved && (
+        {isEditingThis ? (
           <div className="space-y-2">
-            {/* Latest answer */}
+            <textarea
+              className="textarea textarea-bordered bg-base-100 text-sm w-full"
+              rows={3}
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              autoFocus
+            />
+            <select
+              className="select select-bordered select-sm bg-base-100 w-full"
+              value={editPartOf}
+              onChange={(e) => setEditPartOf(e.target.value)}
+            >
+              {partOfOptions.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <div className="flex gap-2 justify-end">
+              <button className="btn btn-ghost btn-sm" onClick={() => setEditing(null)}>
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => void saveEdit(q.id)}
+                disabled={editSaving}
+              >
+                {editSaving ? <span className="loading loading-spinner loading-xs" /> : <Check className="w-3.5 h-3.5" />}
+                Save
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-start justify-between gap-2 mb-3">
+            <p className="text-sm font-medium text-base-content flex-1">{q.text}</p>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              {!q.isApproved &&
+                (isManager ? (
+                  <button className="btn btn-warning btn-xs" onClick={() => void approveQuestion(q.id)}>
+                    Approve
+                  </button>
+                ) : (
+                  <span className="badge badge-warning badge-sm">Pending Approval</span>
+                ))}
+              <CreatorBadge q={q} />
+              {canEdit && (
+                <button
+                  className="btn btn-ghost btn-xs btn-circle"
+                  title="Edit"
+                  onClick={() => {
+                    setEditing(q.id);
+                    setEditText(q.text);
+                    setEditPartOf(q.partOf);
+                  }}
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
+              )}
+              {canDelete && (
+                <button
+                  className="btn btn-ghost btn-xs btn-circle text-error"
+                  title="Delete"
+                  onClick={() => void deleteQuestion(q.id)}
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {!isEditingThis && q.isApproved && (
+          <div className="space-y-2">
             {latestAnswer ? (
               <div className="bg-base-300 rounded-lg p-3">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xs font-medium text-base-content">
-                    {latestAnswer.user.name}
-                  </span>
-                  <span className="text-xs text-base-content/40">
-                    {dayjs(latestAnswer.createdAt).fromNow()}
-                  </span>
+                  <span className="text-xs font-medium text-base-content">{latestAnswer.user.name}</span>
+                  <span className="text-xs text-base-content/40">{dayjs(latestAnswer.createdAt).fromNow()}</span>
                 </div>
-                <p className="text-sm text-base-content/80 whitespace-pre-wrap">
-                  {latestAnswer.content}
-                </p>
+                <p className="text-sm text-base-content/80 whitespace-pre-wrap">{latestAnswer.content}</p>
                 {previousAnswers.length > 0 && (
                   <button
                     className="flex items-center gap-1 text-xs text-primary mt-2 hover:underline"
-                    onClick={() =>
-                      setShowHistory(showHistory === q.id ? null : q.id)
-                    }
+                    onClick={() => setShowHistory(showHistory === q.id ? null : q.id)}
                   >
                     <History className="w-3 h-3" />
                     {showHistory === q.id
@@ -268,9 +442,7 @@ function QuestionsInner() {
                   <div className="mt-2 space-y-2 pl-3 border-l-2 border-base-content/10">
                     {previousAnswers.map((a) => (
                       <div key={a.id} className="text-xs">
-                        <span className="text-base-content/50">
-                          {a.user.name} · {dayjs(a.createdAt).fromNow()}
-                        </span>
+                        <span className="text-base-content/50">{a.user.name} · {dayjs(a.createdAt).fromNow()}</span>
                         <p className="text-base-content/60 mt-0.5">{a.content}</p>
                       </div>
                     ))}
@@ -281,15 +453,14 @@ function QuestionsInner() {
               <p className="text-xs text-base-content/40 italic">No answer yet</p>
             )}
 
-            {/* Answer input */}
             {canAnswer &&
               (answering === q.id ? (
                 <div className="space-y-2">
                   <textarea
                     className="textarea textarea-bordered bg-base-100 w-full text-sm"
                     rows={3}
-                    value={answerText}
-                    onChange={(e) => setAnswerText(e.target.value)}
+                    value={currentAnswerText}
+                    onChange={(e) => handleAnswerTextChange(q.id, e.target.value)}
                     placeholder="Type your answer..."
                     autoFocus
                   />
@@ -299,18 +470,14 @@ function QuestionsInner() {
                       onClick={() => void submitAnswer(q.id)}
                       disabled={submitting}
                     >
-                      {submitting ? (
-                        <span className="loading loading-spinner loading-xs" />
-                      ) : (
-                        <Check className="w-3.5 h-3.5" />
-                      )}
+                      {submitting ? <span className="loading loading-spinner loading-xs" /> : <Check className="w-3.5 h-3.5" />}
                       Save Answer
                     </button>
                     <button
                       className="btn btn-ghost btn-sm"
                       onClick={() => {
                         setAnswering(null);
-                        setAnswerText("");
+                        setAnswerTexts((prev) => ({ ...prev, [q.id]: "" }));
                       }}
                     >
                       Cancel
@@ -322,7 +489,7 @@ function QuestionsInner() {
                   className="btn btn-ghost btn-xs text-primary"
                   onClick={() => {
                     setAnswering(q.id);
-                    setAnswerText(latestAnswer?.content ?? "");
+                    setAnswerTexts((prev) => ({ ...prev, [q.id]: latestAnswer?.content ?? "" }));
                   }}
                 >
                   {latestAnswer ? "Update Answer" : "Answer"}
@@ -365,10 +532,7 @@ function QuestionsInner() {
             <div className="card-body gap-3">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-sm">New Question</h3>
-                <button
-                  className="btn btn-ghost btn-xs btn-circle"
-                  onClick={() => setShowAddForm(false)}
-                >
+                <button className="btn btn-ghost btn-xs btn-circle" onClick={() => setShowAddForm(false)}>
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -386,9 +550,7 @@ function QuestionsInner() {
                 onChange={(e) => setNewPartOf(e.target.value)}
               >
                 {partOfOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
+                  <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
               {!isManager && (
@@ -397,32 +559,18 @@ function QuestionsInner() {
                 </p>
               )}
               <div className="flex gap-2 justify-end">
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => setShowAddForm(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="btn btn-primary btn-sm"
-                  onClick={() => void addQuestion()}
-                >
-                  Submit
-                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setShowAddForm(false)}>Cancel</button>
+                <button className="btn btn-primary btn-sm" onClick={() => void addQuestion()}>Submit</button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Needed to Start section */}
+        {/* Needed to Start */}
         {startQuestions.length > 0 && (
           <div className="space-y-2">
-            <h2 className="text-xs font-semibold text-base-content/50 uppercase tracking-widest">
-              Needed to Start
-            </h2>
-            {startQuestions.map((q) => (
-              <QuestionCard key={q.id} q={q} />
-            ))}
+            <h2 className="text-xs font-semibold text-base-content/50 uppercase tracking-widest">Needed to Start</h2>
+            {startQuestions.map((q) => <QuestionCard key={q.id} q={q} />)}
           </div>
         )}
 
@@ -435,9 +583,7 @@ function QuestionsInner() {
               <h2 className="text-xs font-semibold text-base-content/50 uppercase tracking-widest">
                 Milestone {m.order}: {m.title}
               </h2>
-              {qs.map((q) => (
-                <QuestionCard key={q.id} q={q} />
-              ))}
+              {qs.map((q) => <QuestionCard key={q.id} q={q} />)}
             </div>
           );
         })}
@@ -447,10 +593,7 @@ function QuestionsInner() {
             <div className="text-5xl mb-3">❓</div>
             <p className="text-lg">No questions yet</p>
             {!isClient && (
-              <button
-                className="btn btn-primary btn-sm mt-4"
-                onClick={() => setShowAddForm(true)}
-              >
+              <button className="btn btn-primary btn-sm mt-4" onClick={() => setShowAddForm(true)}>
                 Add the first question
               </button>
             )}

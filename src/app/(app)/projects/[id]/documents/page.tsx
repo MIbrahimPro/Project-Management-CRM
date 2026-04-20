@@ -89,7 +89,7 @@ export default function DocumentsPage() {
   }, [projectId]);
 
   const isManager = user
-    ? ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(user.role)
+    ? ["ADMIN", "PROJECT_MANAGER"].includes(user.role)
     : false;
   const isClient = user?.role === "CLIENT";
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, createContext, useContext } from "react";
+import { useState, useEffect, createContext, useContext } from "react";
+import { useRouter } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { Navbar } from "./Navbar";
 import { AISidebar } from "@/components/ai/AISidebar";
@@ -8,6 +9,7 @@ import { AttendanceOvertimeModal } from "@/components/attendance/AttendanceOvert
 import { useSocket } from "@/hooks/useSocket";
 import { FetchInterceptor } from "@/components/auth/FetchInterceptor";
 import { PresenceProvider } from "./PresenceProvider";
+import toast from "react-hot-toast";
 import type { SidebarItem } from "@/config/sidebar";
 
 interface SidebarOverrideContextValue {
@@ -45,26 +47,67 @@ interface ClientLayoutProps {
   children: React.ReactNode;
 }
 
+function playNotificationSound() {
+  try {
+    const ctx = new AudioContext();
+    const gain = ctx.createGain();
+    gain.connect(ctx.destination);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+    const osc = ctx.createOscillator();
+    osc.connect(gain);
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.3);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.6);
+  } catch {}
+}
+
 export function ClientLayout({ user, sidebarItems, children }: ClientLayoutProps) {
+  const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [sidebarOverride, setSidebarOverride] = useState<SidebarItem[] | null>(null);
-  
+
   // Overtime Modal State
   const [overtimeCheckInId, setOvertimeCheckInId] = useState<string | null>(null);
-  
-  const notifSocket = useSocket("/notifications");
+
+  const { socket: notifSocket } = useSocket("/notifications");
 
   useEffect(() => {
     if (!notifSocket) return;
     notifSocket.on("shift_complete", (data: { checkInId: string }) => {
       setOvertimeCheckInId(data.checkInId);
     });
+    notifSocket.on("new_notification", (notif: { title: string; body: string; link?: string | null }) => {
+      playNotificationSound();
+      toast(
+        (t) => (
+          <button
+            className="flex flex-col gap-0.5 text-left w-full"
+            onClick={() => {
+              toast.dismiss(t.id);
+              if (notif.link) router.push(notif.link);
+            }}
+          >
+            <span className="font-semibold text-sm text-base-content">{notif.title}</span>
+            <span className="text-xs text-base-content/70 line-clamp-2">{notif.body}</span>
+          </button>
+        ),
+        {
+          duration: 5000,
+          position: "top-center",
+          style: { background: "hsl(var(--b2))", color: "hsl(var(--bc))", maxWidth: "360px", padding: "12px 16px" },
+        }
+      );
+    });
     return () => {
       notifSocket.off("shift_complete");
+      notifSocket.off("new_notification");
     };
-  }, [notifSocket]);
+  }, [notifSocket, router]);
 
   const ATTENDANCE_ROLES = ["ADMIN", "PROJECT_MANAGER", "DEVELOPER", "DESIGNER", "HR", "ACCOUNTANT", "SALES"];
 
@@ -72,6 +115,13 @@ export function ClientLayout({ user, sidebarItems, children }: ClientLayoutProps
     setMounted(true);
     const saved = localStorage.getItem("sidebar-collapsed");
     if (saved === "true") setCollapsed(true);
+
+    // Register the Web Push service worker once (Phase 6.3).
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker
+        .register("/sw.js")
+        .catch((err) => console.warn("[SW] registration failed:", err));
+    }
 
     // Auto check-in on first visit of the day for attendance-eligible roles
     if (ATTENDANCE_ROLES.includes(user.role)) {

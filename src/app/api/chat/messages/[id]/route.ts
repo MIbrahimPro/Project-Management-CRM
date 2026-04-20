@@ -16,11 +16,12 @@ export const DELETE = apiHandler(async (req: NextRequest, { params }: any) => {
 
   if (!message) return notFound();
 
-  // Only sender or Super Admin can delete for everyone
+  // Only sender or Admin can delete for everyone
+  // SUPER_ADMIN is hidden — they never reach normal APIs (middleware redirects to /control)
   const isOwner = message.senderId === userId;
-  const isSuperAdmin = userRole === "SUPER_ADMIN";
+  const isAdmin = userRole === "ADMIN";
 
-  if (!isOwner && !isSuperAdmin) {
+  if (!isOwner && !isAdmin) {
     return forbidden();
   }
 

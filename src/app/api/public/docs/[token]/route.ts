@@ -1,9 +1,12 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { apiHandler } from "@/lib/api-handler";
 
-export const GET = apiHandler(async (req: NextRequest, { params }: any) => {
-  const { token } = params;
+export const GET = apiHandler(async (req: NextRequest, ctx) => {
+  const token = ctx?.params?.token;
+  if (!token) {
+    return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
+  }
 
   const doc = await prisma.document.findUnique({
     where: { shareToken: token, isShared: true },
@@ -13,12 +16,17 @@ export const GET = apiHandler(async (req: NextRequest, { params }: any) => {
       content: true,
       updatedAt: true,
       project: {
-        select: { name: true }
-      }
-    }
+        select: { title: true },
+      },
+    },
   });
 
-  if (!doc) return { status: 404, error: "Document not found or no longer shared" };
+  if (!doc) {
+    return NextResponse.json(
+      { error: "Document not found or no longer shared", code: "NOT_FOUND" },
+      { status: 404 }
+    );
+  }
 
-  return { data: doc };
+  return NextResponse.json({ data: doc });
 });

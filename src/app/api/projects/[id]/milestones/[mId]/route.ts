@@ -17,7 +17,7 @@ export const PATCH = apiHandler(
     const userId = req.headers.get("x-user-id");
     const role = req.headers.get("x-user-role") ?? "";
     if (!userId) return NextResponse.json({ error: "Unauthorized", code: "AUTH_REQUIRED" }, { status: 401 });
-    if (!["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(role)) forbidden();
+    if (!["ADMIN", "PROJECT_MANAGER"].includes(role)) forbidden();
 
     const projectId = ctx?.params.id;
     const milestoneId = ctx?.params.mId;

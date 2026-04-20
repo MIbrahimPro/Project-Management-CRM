@@ -21,6 +21,10 @@ npm run prisma:studio     # Open Prisma Studio GUI
 npm run bootstrap:users   # Upsert SUPER_ADMIN + ADMIN accounts from .env
 ```
 
+## LiveKit Meetings
+
+Meetings are powered by LiveKit Cloud (Free Tier). Token generation is handled in `src/lib/livekit.ts` using `livekit-server-sdk` v2. The frontend uses `@livekit/react` and `livekit-client` in `src/components/meetings/LiveKitMeeting.tsx`. Recordings are handled via local MediaRecorder and uploaded to Supabase storage. Waitlists and invites are managed via meeting context (Project/Task/Workspace).
+
 ## Architecture
 
 ### Entry Point & Server
@@ -212,13 +216,13 @@ Standard error codes: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `VALIDATION_ERR
 - `(app)/hr/[id]/page.tsx` — candidate list with AI score badges, detail panel (status dropdown, internal notes, answers, CV link, publish/share buttons).
 - `(public)/careers/[slug]/page.tsx` — public job page with hCaptcha. Uses `@hcaptcha/react-hcaptcha`. Deadline expiry guard. Success screen after submit.
 
-### Meetings (Jitsi)
-- `src/lib/jitsi.ts` — `generateJitsiToken(roomName, user)` signs HS256 JWT for Jitsi. Env: `JITSI_DOMAIN`, `JITSI_APP_ID`, `JITSI_APP_SECRET`.
-- `POST /api/meetings/start` — body `{ title, projectId?, chatRoomId? }`. Creates `Meeting` + first `MeetingParticipant`, returns `{ meetingId, jitsiRoomId, domain, token, isModerator }`. Clients (`CLIENT` role) are blocked.
-- `GET /api/meetings/[id]/join-token` — returns token for joining an existing meeting. Upserts `MeetingParticipant`. Returns 410 if `endedAt` is set.
-- `src/components/meetings/JitsiMeeting.tsx` — must be `dynamic(..., { ssr: false })`. Loads Jitsi External API via script injection (`https://{domain}/external_api.js`). Fixed z-50 full-screen overlay. Props: `domain`, `roomName` (jitsiRoomId), `token`, `displayName`, `isModerator`, `onClose`. "Record" button visible only when `isModerator=true`.
+### Meetings (LiveKit)
+- `src/lib/livekit.ts` — `generateLiveKitToken(roomName, user)` signs an AccessToken for LiveKit. Env: `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`.
+- `POST /api/meetings/start` — body `{ title, projectId?, chatRoomId? }`. Creates `Meeting` + first `MeetingParticipant`, returns `{ meetingId, liveKitRoomId, url, token, isModerator }`. Clients (`CLIENT` role) are blocked.
+- `GET /api/meetings/[id]/join-token` — returns token for joining an existing meeting. Upserts `MeetingParticipant`. Returns 410 if `endedAt` is set. Supports guest join with `?guest=1&name=...`.
+- `src/components/meetings/LiveKitMeeting.tsx` — must be `dynamic(..., { ssr: false })`. Uses `@livekit/react` components. Fixed z-50 full-screen overlay. Props: `url`, `roomName` (liveKitRoomId), `token`, `displayName`, `isModerator`, `onClose`.
 - `isModerator` = `SUPER_ADMIN | ADMIN | PROJECT_MANAGER | TEAM_LEADER | SENIOR_DEV`.
-- `jitsiRoomId` = `devrolin-{nanoid(12)}` — unique per meeting, used as Jitsi room name.
+- `liveKitRoomId` = `devrolin-{nanoid(12)}` — unique per meeting, used as LiveKit room name.
 - "Start Meeting" button: shown on project dashboard header (non-client) and project chat header (non-client via `showMeetingButton`/`onStartMeeting` props on `ChatRoom`).
 
 ### Admin Panel (`/admin`)
@@ -287,4 +291,4 @@ Uses Groq Chat Completions API (`src/lib/ai.ts`) with task-based model routing:
 Configured via `GROQ_API_KEY`, `GROQ_MODEL_FAST`, `GROQ_MODEL_COMPLEX`, `GROQ_MODEL_JSON`. `AI_MODEL` can be set as an optional global override.
 
 ## Required Environment Variables
-`DATABASE_URL`, `REDIS_URL`, `ACCESS_TOKEN_SECRET`, `REFRESH_TOKEN_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `NEXT_PUBLIC_GOOGLE_CLIENT_ID`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `GROQ_API_KEY`, `GROQ_MODEL_FAST`, `GROQ_MODEL_COMPLEX`, `GROQ_MODEL_JSON`, `AI_MODEL`, `HCAPTCHA_SECRET_KEY`, `NEXT_PUBLIC_HCAPTCHA_SITE_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_EMAIL`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_HOCUSPOCUS_WS`, `JITSI_DOMAIN`, `JITSI_APP_ID`, `JITSI_APP_SECRET`
+`DATABASE_URL`, `REDIS_URL`, `ACCESS_TOKEN_SECRET`, `REFRESH_TOKEN_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `NEXT_PUBLIC_GOOGLE_CLIENT_ID`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `GROQ_API_KEY`, `GROQ_MODEL_FAST`, `GROQ_MODEL_COMPLEX`, `GROQ_MODEL_JSON`, `AI_MODEL`, `HCAPTCHA_SECRET_KEY`, `NEXT_PUBLIC_HCAPTCHA_SITE_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_EMAIL`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_HOCUSPOCUS_WS`, `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`

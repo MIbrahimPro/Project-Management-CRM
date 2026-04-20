@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
  */
 export const GET = apiHandler(async (req: NextRequest) => {
   const userRole = req.headers.get("x-user-role") ?? "";
-  if (!["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(userRole)) forbidden();
+  if (!["ADMIN", "PROJECT_MANAGER"].includes(userRole)) forbidden();
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);

@@ -20,7 +20,7 @@ export const DELETE = apiHandler(async (req: NextRequest, { params }: any) => {
     return NextResponse.json({ error: "Room not found" }, { status: 404 });
   }
 
-  const isGlobalManager = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(userRole);
+  const isGlobalManager = ["ADMIN", "PROJECT_MANAGER"].includes(userRole);
   const userMembership = room.members.find(m => m.userId === userId);
   const isGroupAdmin = userMembership?.isGroupAdmin;
 
@@ -58,7 +58,7 @@ export const PATCH = apiHandler(async (req: NextRequest, { params }: any) => {
     return NextResponse.json({ error: "Room not found" }, { status: 404 });
   }
 
-  const isGlobalManager = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(userRole);
+  const isGlobalManager = ["ADMIN", "PROJECT_MANAGER"].includes(userRole);
   const userMembership = room.members.find(m => m.userId === userId);
   const isGroupAdmin = userMembership?.isGroupAdmin;
 

@@ -206,6 +206,53 @@ async function absenceAutoMarkJob() {
   }
 }
 
+// Meeting auto-end job — runs every minute
+// Ends meetings that have been running for >= 2 minutes with no active participants
+async function meetingAutoEndJob() {
+  try {
+    const now = new Date();
+    const twoMinAgo = new Date(now.getTime() - 2 * 60 * 1000);
+
+    const activeMeetings = await prisma.meeting.findMany({
+      where: {
+        endedAt: null,
+        startedAt: { lte: twoMinAgo },
+      },
+      select: {
+        id: true,
+        title: true,
+        startedAt: true,
+        participants: {
+          select: { id: true, leftAt: true, joinedAt: true },
+        },
+      },
+    });
+
+    for (const m of activeMeetings) {
+      const hasActive = m.participants.some((p) => p.leftAt === null);
+      if (hasActive) continue;
+
+      // No active participants. Check that the most-recent "leftAt" is also >= 2 min ago
+      // (to avoid closing a meeting in the small window between joins).
+      const lastActivity = m.participants.reduce<Date>((acc, p) => {
+        const t = p.leftAt ?? p.joinedAt;
+        return t && t > acc ? t : acc;
+      }, m.startedAt);
+
+      if (lastActivity > twoMinAgo) continue;
+
+      await prisma.meeting.update({
+        where: { id: m.id },
+        data: { endedAt: now },
+      });
+      console.log(`[MeetingAutoEnd] Ended meeting ${m.id} (${m.title})`);
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[MeetingAutoEnd] Job error:", msg);
+  }
+}
+
 async function upcomingInterviewsJob() {
   try {
     const now = new Date();
@@ -302,6 +349,7 @@ async function main() {
     void autoCheckoutJob();
     void upcomingInterviewsJob();
     void absenceAutoMarkJob();
+    void meetingAutoEndJob();
 
     // Set intervals
     setInterval(refreshCurrencyRates, 1000 * 60 * 60 * 24 * 7); // Weekly
@@ -309,13 +357,8 @@ async function main() {
     setInterval(autoCheckoutJob, 1000 * 60 * 15); // 15 mins
     setInterval(upcomingInterviewsJob, 1000 * 60 * 5); // 5 mins
     setInterval(absenceAutoMarkJob, 1000 * 60 * 60); // Hourly (checks 04:00 PKT)
+    setInterval(meetingAutoEndJob, 1000 * 60); // Every 1 min
   }, 10_000);
-
-  // Recurring schedules
-  setInterval(() => void refreshCurrencyRates(), 7 * 24 * 60 * 60 * 1000);
-  setInterval(() => void awayCheckJob(), 30 * 60 * 1000);
-  setInterval(() => void autoCheckoutJob(), 15 * 60 * 1000);
-  setInterval(() => void upcomingInterviewsJob(), 5 * 60 * 1000);
 }
 
 main().catch(console.error);

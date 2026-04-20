@@ -2,21 +2,21 @@
 
 /* Background and text colors for the editor container */
 .bn-container[data-color-scheme] {
-  --bn-colors-editor-background: hsl(var(--b1));
-  --bn-colors-editor-text: hsl(var(--bc));
-  --bn-colors-menu-background: hsl(var(--b2));
-  --bn-colors-menu-text: hsl(var(--bc));
-  --bn-colors-tooltip-background: hsl(var(--b3));
-  --bn-colors-tooltip-text: hsl(var(--bc));
-  --bn-colors-hovered-background: hsl(var(--b3));
-  --bn-colors-hovered-text: hsl(var(--bc));
-  --bn-colors-selected-background: hsl(var(--p) / 0.15);
-  --bn-colors-selected-text: hsl(var(--bc));
-  --bn-colors-disabled-background: hsl(var(--b3));
-  --bn-colors-disabled-text: hsl(var(--bc) / 0.4);
-  --bn-colors-shadow: hsl(var(--bc) / 0.1);
-  --bn-colors-border: hsl(var(--bc) / 0.15);
-  --bn-colors-side-menu: hsl(var(--bc) / 0.3);
+  --bn-colors-editor-background: var(--fallback-b1, oklch(var(--b1) / 1));
+  --bn-colors-editor-text: var(--fallback-bc, oklch(var(--bc) / 1));
+  --bn-colors-menu-background: var(--fallback-b2, oklch(var(--b2) / 1));
+  --bn-colors-menu-text: var(--fallback-bc, oklch(var(--bc) / 1));
+  --bn-colors-tooltip-background: var(--fallback-b3, oklch(var(--b3) / 1));
+  --bn-colors-tooltip-text: var(--fallback-bc, oklch(var(--bc) / 1));
+  --bn-colors-hovered-background: var(--fallback-b3, oklch(var(--b3) / 1));
+  --bn-colors-hovered-text: var(--fallback-bc, oklch(var(--bc) / 1));
+  --bn-colors-selected-background: oklch(var(--p) / 0.15);
+  --bn-colors-selected-text: var(--fallback-bc, oklch(var(--bc) / 1));
+  --bn-colors-disabled-background: var(--fallback-b3, oklch(var(--b3) / 1));
+  --bn-colors-disabled-text: oklch(var(--bc) / 0.4);
+  --bn-colors-shadow: oklch(var(--bc) / 0.1);
+  --bn-colors-border: oklch(var(--bc) / 0.15);
+  --bn-colors-side-menu: oklch(var(--bc) / 0.3);
   --bn-font-family: inherit;
 }
 
@@ -25,11 +25,11 @@
 .bn-container .bn-formatting-toolbar,
 .bn-container .bn-slash-menu,
 .bn-container .bn-link-toolbar {
-  background: hsl(var(--b2));
-  color: hsl(var(--bc));
-  border: 1px solid hsl(var(--bc) / 0.15);
+  background: var(--fallback-b2, oklch(var(--b2) / 1));
+  color: var(--fallback-bc, oklch(var(--bc) / 1));
+  border: 1px solid oklch(var(--bc) / 0.15);
   border-radius: 0.75rem;
-  box-shadow: 0 4px 12px hsl(var(--bc) / 0.08);
+  box-shadow: 0 4px 12px oklch(var(--bc) / 0.08);
 }
 
 .bn-container .bn-slash-menu {
@@ -37,26 +37,128 @@
 }
 
 /* Mantine overrides for menus within the editor */
-.bn-container .mantine-Menu-dropdown {
-  background: hsl(var(--b2));
-  border-color: hsl(var(--bc) / 0.15);
+.bn-container .mantine-Menu-dropdown,
+.mantine-Menu-dropdown {
+  background: var(--fallback-b2, oklch(var(--b2) / 1)) !important;
+  border-color: oklch(var(--bc) / 0.15) !important;
 }
-.bn-container .mantine-Popover-dropdown {
-  background: hsl(var(--b2));
-  border: 1px solid hsl(var(--bc) / 0.15);
+.bn-container .mantine-Popover-dropdown,
+.mantine-Popover-dropdown {
+  background: var(--fallback-b2, oklch(var(--b2) / 1)) !important;
+  border: 1px solid oklch(var(--bc) / 0.15) !important;
+  color: var(--fallback-bc, oklch(var(--bc) / 1)) !important;
 }
-.bn-container .mantine-Menu-item {
-  color: hsl(var(--bc));
+.bn-container .mantine-Menu-item,
+.mantine-Menu-item {
+  color: var(--fallback-bc, oklch(var(--bc) / 1)) !important;
 }
-.bn-container .mantine-Menu-item:hover {
-  background: hsl(var(--b3));
+.bn-container .mantine-Menu-item:hover,
+.mantine-Menu-item:hover {
+  background: var(--fallback-b3, oklch(var(--b3) / 1)) !important;
+}
+
+/* Suggestion/slash menu portal — Mantine may render outside .bn-container */
+[data-mantine-portal] .bn-slash-menu,
+[data-mantine-portal] .mantine-Popover-dropdown {
+  background: var(--fallback-b2, oklch(var(--b2) / 1)) !important;
+  color: var(--fallback-bc, oklch(var(--bc) / 1)) !important;
+  border: 1px solid oklch(var(--bc) / 0.15) !important;
+  border-radius: 0.75rem !important;
+  box-shadow: 0 4px 12px oklch(var(--bc) / 0.12) !important;
+}
+
+/*
+ * Slash command menu (/) — inner Mantine Stack (#bn-suggestion-menu).
+ */
+#bn-suggestion-menu.bn-suggestion-menu,
+.bn-mantine .bn-suggestion-menu,
+.bn-container .bn-suggestion-menu {
+  background-color: var(--fallback-b2, oklch(var(--b2) / 1)) !important;
+  color: var(--fallback-bc, oklch(var(--bc) / 1)) !important;
+  border: 1px solid oklch(var(--bc) / 0.15) !important;
+  border-radius: 0.75rem !important;
+  box-shadow: 0 4px 12px oklch(var(--bc) / 0.12) !important;
+  opacity: 1 !important;
+}
+
+/*
+ * Slash menu outer shell — the Floating UI node (inspect: display:flex; position:absolute;
+ * transition-property:opacity; data-floating-ui-focusable). This is the div that must
+ * be painted; it is not always .bn-container > div (nesting varies).
+ */
+[data-floating-ui-focusable]:has(> #bn-suggestion-menu) {
+  background-color: var(--fallback-b2, oklch(var(--b2) / 1)) !important;
+  opacity: 1 !important;
+  z-index: 2147483600 !important;
+  isolation: isolate;
+  border-radius: 0.75rem;
+  box-shadow: 0 8px 28px oklch(var(--bc) / 0.18);
+  border: 1px solid oklch(var(--bc) / 0.18);
+  /* Inline style uses transition-property: opacity — overrides opacity; only animate transform */
+  transition: transform 250ms ease !important;
+}
+
+/* Fallback if attribute name changes — same direct-child relationship */
+.bn-container > div:has(> #bn-suggestion-menu) {
+  background-color: var(--fallback-b2, oklch(var(--b2) / 1)) !important;
+  opacity: 1 !important;
+  z-index: 2147483600 !important;
+  isolation: isolate;
+  border-radius: 0.75rem;
+  box-shadow: 0 8px 28px oklch(var(--bc) / 0.18);
+  border: 1px solid oklch(var(--bc) / 0.18);
+  transition: transform 250ms ease !important;
+}
+
+/* Single chrome: outer shell carries border/shadow */
+[data-floating-ui-focusable]:has(> #bn-suggestion-menu) #bn-suggestion-menu,
+.bn-container > div:has(> #bn-suggestion-menu) #bn-suggestion-menu {
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.bn-mantine .bn-suggestion-menu-label {
+  color: oklch(var(--bc) / 0.55) !important;
+}
+
+.bn-mantine .bn-suggestion-menu-item {
+  color: var(--fallback-bc, oklch(var(--bc) / 1)) !important;
+}
+
+.bn-mantine .bn-suggestion-menu-item[aria-selected="true"],
+.bn-mantine .bn-suggestion-menu-item:hover {
+  background-color: var(--fallback-b3, oklch(var(--b3) / 1)) !important;
+}
+
+/* Explicit fallback: ensure floating root and menu render an opaque background
+   even if BlockNote theme tokens (--b2 / --bc) are missing or :has() isn't
+   supported. Keeps the visual chrome consistent while still preferring tokens. */
+.bn-suggestion-menu-floating-root,
+.bn-suggestion-menu-floating-root > #bn-suggestion-menu,
+#bn-suggestion-menu.bn-suggestion-menu {
+  background-color: var(--fallback-b2, oklch(var(--b2) / 1)) !important;
+  color: var(--fallback-bc, oklch(var(--bc) / 1)) !important;
+  border: 1px solid oklch(var(--bc) / 0.18) !important;
+  box-shadow: 0 8px 28px oklch(var(--bc) / 0.18) !important;
+  border-radius: 0.75rem !important;
+  opacity: 1 !important;
+  z-index: 2147483600 !important;
+  isolation: isolate;
+  transition: transform 250ms ease !important;
+}
+
+/* Emoji / grid picker uses the same menu tokens */
+.bn-mantine .bn-grid-suggestion-menu {
+  background: var(--fallback-b2, oklch(var(--b2) / 1)) !important;
+  color: var(--fallback-bc, oklch(var(--bc) / 1)) !important;
+  border: 1px solid oklch(var(--bc) / 0.15) !important;
 }
 
 /* Horizontal rule block styling */
 .bn-container [data-content-type="horizontalRule"] hr,
 .bn-container hr {
   border: none;
-  border-top: 1px solid hsl(var(--bc) / 0.2);
+  border-top: 1px solid oklch(var(--bc) / 0.2);
   margin: 1rem 0;
 }
 
@@ -72,7 +174,8 @@
 
 .yjs-cursor > .yjs-cursor-label {
   position: absolute;
-  top: -1.4em;
+  bottom: 100%;
+  top: auto;
   left: -1px;
   font-size: 0.65rem;
   font-weight: 600;
@@ -98,9 +201,10 @@
 
 /* Container wrapper for better visual integration */
 .bn-editor-wrapper {
-  border: 1px solid hsl(var(--bc) / 0.1);
+  border: 1px solid oklch(var(--bc) / 0.1);
   border-radius: 0.75rem;
-  overflow: hidden;
+  /* overflow:hidden clips floating slash menu; scroll lives on .bn-container */
+  overflow: visible;
   display: flex;
   flex-direction: column;
 }

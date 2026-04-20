@@ -73,10 +73,7 @@ export const POST = apiHandler(async (req: NextRequest, ctx) => {
   }
 
   if (targetUser.role === "SUPER_ADMIN") {
-    return NextResponse.json(
-      { error: "This user cannot be invited to the meeting", code: "FORBIDDEN_TARGET" },
-      { status: 403 }
-    );
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
   if (targetUser.role === "CLIENT" && !CLIENT_INVITER_ROLES_ALLOWED.includes(userRole)) {

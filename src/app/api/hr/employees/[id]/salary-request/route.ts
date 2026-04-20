@@ -6,7 +6,7 @@ import { logAction } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
-const HR_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "HR"];
+const HR_ROLES = ["ADMIN", "PROJECT_MANAGER", "HR"];
 
 const schema = z.object({
   proposedSalary: z.string().min(1),
@@ -30,7 +30,7 @@ export const POST = apiHandler(async (req: NextRequest, ctx) => {
   if (!employee) return NextResponse.json({ error: "Employee not found", code: "NOT_FOUND" }, { status: 404 });
 
   // If the requester is an ADMIN or SUPER_ADMIN, auto-approve and apply
-  const isAdmin = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(userRole);
+  const isAdmin = ["ADMIN", "PROJECT_MANAGER"].includes(userRole);
   
   if (isAdmin) {
     const updated = await prisma.$transaction(async (tx) => {
@@ -70,7 +70,7 @@ export const POST = apiHandler(async (req: NextRequest, ctx) => {
 
   // Add notification to Admins
   const admins = await prisma.user.findMany({
-    where: { role: { in: ["SUPER_ADMIN", "ADMIN"] }, isActive: true },
+    where: { role: { in: ["ADMIN"] }, isActive: true },
     select: { id: true }
   });
 

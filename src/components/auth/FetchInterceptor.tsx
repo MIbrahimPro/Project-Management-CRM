@@ -18,21 +18,23 @@ export function FetchInterceptor() {
     // Prevent double-install (fast refresh, etc.)
     if ((window.fetch as unknown as { __intercepted?: boolean }).__intercepted) return;
 
-    let refreshPromise: Promise<boolean> | null = null;
+    // Returns: true = refreshed OK, false = auth invalid (redirect), null = server error (don't redirect)
+    let refreshPromise: Promise<boolean | null> | null = null;
 
-    async function refreshOnce(): Promise<boolean> {
+    async function refreshOnce(): Promise<boolean | null> {
       if (!refreshPromise) {
         refreshPromise = originalFetch("/api/auth/refresh", {
           method: "POST",
           credentials: "include",
         })
-          .then((res) => res.ok)
-          .catch(() => false)
+          .then((res) => {
+            if (res.ok) return true;
+            if (res.status === 401 || res.status === 403) return false;
+            return null; // 5xx / transient error — don't log out
+          })
+          .catch(() => null)
           .finally(() => {
-            // Small delay before next attempt slot opens so we don't thunder
-            setTimeout(() => {
-              refreshPromise = null;
-            }, 100);
+            setTimeout(() => { refreshPromise = null; }, 100);
           });
       }
       return refreshPromise;
@@ -67,12 +69,13 @@ export function FetchInterceptor() {
       }
 
       const refreshed = await refreshOnce();
-      if (!refreshed) {
-        // Refresh failed — redirect to login with the current path as returnTo.
-        if (!window.location.pathname.startsWith("/login")) {
+      if (refreshed !== true) {
+        if (refreshed === false && !window.location.pathname.startsWith("/login")) {
+          // Definitive auth failure (401/403) — redirect to login
           const returnTo = window.location.pathname + window.location.search;
           window.location.href = `/login?redirect=${encodeURIComponent(returnTo)}`;
         }
+        // null = transient server error — return original response without redirecting
         return response;
       }
 

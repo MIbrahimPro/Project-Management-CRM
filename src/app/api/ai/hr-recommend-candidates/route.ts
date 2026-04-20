@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-const HR_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "HR"];
+const HR_ROLES = ["ADMIN", "PROJECT_MANAGER", "HR"];
 
 const bodySchema = z.object({
   requestId: z.string(),

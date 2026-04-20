@@ -28,7 +28,7 @@ export const GET = apiHandler(async (req: NextRequest) => {
   const status = searchParams.get("status");
   const mine = searchParams.get("mine") === "true";
 
-  const isManager = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(userRole);
+  const isManager = ["ADMIN", "PROJECT_MANAGER"].includes(userRole);
 
   const where: Record<string, unknown> = {};
   if (status) where.status = status;

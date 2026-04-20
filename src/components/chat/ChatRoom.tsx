@@ -358,12 +358,16 @@ export function ChatRoom({
   const [emojiPickerFor, setEmojiPickerFor] = useState<"input" | string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
-  const { statuses } = usePresence();
   const [recordingTime, setRecordingTime] = useState(0);
   const [infoModalOpen, setInfoModalOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, msg: any } | null>(null);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
   const [hasNewMessagesBelow, setHasNewMessagesBelow] = useState(false);
+  const isScrolledUpRef = useRef(isScrolledUp);
+
+  useEffect(() => {
+    isScrolledUpRef.current = isScrolledUp;
+  }, [isScrolledUp]);
 
   const LONG_MESSAGE_THRESHOLD = 500;
 
@@ -477,7 +481,7 @@ export function ChatRoom({
     function onNewMessage(msg: Message) {
       if (msg.roomId === roomId) {
         setMessages((prev) => [...prev, msg]);
-        if (isScrolledUp) {
+        if (isScrolledUpRef.current) {
           setHasNewMessagesBelow(true);
         } else {
           setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
@@ -730,7 +734,7 @@ export function ChatRoom({
     return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
   }
 
-  const isGlobalManager = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(currentUser.role);
+  const isGlobalManager = ["ADMIN", "PROJECT_MANAGER"].includes(currentUser.role);
   const isCustomGroup = roomDetails?.type === "custom_group";
   const currentUserMember = roomDetails?.members?.find(m => m.userId === currentUser.id);
   const isGroupAdmin = currentUserMember?.isGroupAdmin;
@@ -1002,7 +1006,7 @@ export function ChatRoom({
                       }
                       size={28}
                       showPresence={!isOwn && !!msg.sender}
-                      isOnline={msg.sender ? statuses[msg.sender.id] === "online" : false}
+                      isOnline={msg.sender ? presenceMap[msg.sender.id] === "online" : false}
                     />
                   </div>
                 )}
@@ -1100,25 +1104,42 @@ export function ChatRoom({
                       )}
                       {isOwn && !isDeleted && (
                         <div className="flex items-center ml-1">
-                          {msg.receipts?.length > 0 ? (
-                            <div className="flex -space-x-1" title={roomDetails?.type !== "general_dm" ? `Read by ${msg.receipts.length} people` : "Read"}>
-                              <svg className="w-3.5 h-3.5 text-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                          {(() => {
+                            const otherMembers = (roomDetails?.members ?? []).filter(m => m.userId !== currentUser.id);
+                            const totalOthers = otherMembers.length;
+                            const readCount = msg.receipts?.length ?? 0;
+                            const allRead = totalOthers > 0 && readCount >= totalOthers;
+                            const anyRead = readCount > 0;
+                            const delivered = !!msg.deliveredAt;
+                            const readTitle = roomDetails?.type === "general_dm"
+                              ? (allRead ? "Read" : "Delivered")
+                              : (allRead ? `Read by all (${readCount})` : anyRead ? `Read by ${readCount} of ${totalOthers}` : delivered ? "Delivered" : "Sent");
+
+                            if (allRead) {
+                              return (
+                                <svg className="w-3.5 h-3.5 text-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-label={readTitle}>
+                                  <title>{readTitle}</title>
+                                  <polyline points="20 6 9 17 4 12" />
+                                  <polyline points="22 6 11 17 6 12" style={{ transform: "translateX(4px)" }} />
+                                </svg>
+                              );
+                            }
+                            if (delivered || anyRead) {
+                              return (
+                                <svg className="w-3.5 h-3.5 opacity-40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-label={readTitle}>
+                                  <title>{readTitle}</title>
+                                  <polyline points="20 6 9 17 4 12" />
+                                  <polyline points="22 6 11 17 6 12" style={{ transform: "translateX(4px)" }} />
+                                </svg>
+                              );
+                            }
+                            return (
+                              <svg className="w-3.5 h-3.5 opacity-30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-label="Sent">
+                                <title>Sent</title>
                                 <polyline points="20 6 9 17 4 12" />
-                                <polyline points="22 6 11 17 6 12" style={{ transform: "translateX(4px)" }} />
                               </svg>
-                            </div>
-                          ) : msg.deliveredAt ? (
-                            <div className="flex -space-x-1" title="Delivered">
-                              <svg className="w-3.5 h-3.5 opacity-30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="20 6 9 17 4 12" />
-                                <polyline points="22 6 11 17 6 12" style={{ transform: "translateX(4px)" }} />
-                              </svg>
-                            </div>
-                          ) : (
-                            <svg className="w-3.5 h-3.5 opacity-30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="20 6 9 17 4 12" />
-                            </svg>
-                          )}
+                            );
+                          })()}
                         </div>
                       )}
                       {msg.editedAt && (
@@ -1160,7 +1181,7 @@ export function ChatRoom({
                         >
                           <Smile className="w-3.5 h-3.5" />
                         </button>
-                        {(isOwn || currentUser.role === "SUPER_ADMIN") && (
+                        {(isOwn || currentUser.role === "ADMIN") && (
                           <button
                             title="Delete"
                             className="p-1 hover:text-error rounded text-base-content/70 hover:bg-base-300 transition-colors"
@@ -1519,7 +1540,7 @@ export function ChatRoom({
             onDelete={() => handleDeleteMessage(contextMenu.msg.id)}
             onPin={() => socket?.emit("pin_message", { messageId: contextMenu.msg.id, isPinned: !contextMenu.msg.pinnedAt })}
             isPinned={!!contextMenu.msg.pinnedAt}
-            canPin={["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(currentUser.role) || roomDetails?.members.find(m => m.userId === currentUser.id)?.isGroupAdmin}
+            canPin={["ADMIN", "PROJECT_MANAGER"].includes(currentUser.role) || roomDetails?.members.find(m => m.userId === currentUser.id)?.isGroupAdmin}
           />
         )}
       </AnimatePresence>

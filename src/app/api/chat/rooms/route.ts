@@ -24,7 +24,7 @@ export const GET = apiHandler(async (req: NextRequest) => {
     });
     if (
       project &&
-      (["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(role) ||
+      (["ADMIN", "PROJECT_MANAGER"].includes(role) ||
         project.clientId === userId ||
         !!(await prisma.projectMember.findFirst({
           where: { projectId, userId },
@@ -98,13 +98,41 @@ export const GET = apiHandler(async (req: NextRequest) => {
     })
   );
 
-  const canChatWithClients = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(role);
+  const isAdminOrPM = ["ADMIN", "PROJECT_MANAGER"].includes(role);
+
   const finalRooms = roomsWithUnread.filter((room) => {
-    if (room.type === "general_dm" && !canChatWithClients) {
-      const hasClient = room.members.some((m) => m.user.role === "CLIENT" && m.userId !== userId);
-      if (hasClient) return false;
+    if (role === "CLIENT") {
+      // Clients can only see DMs with managers/admins
+      if (room.type === "general_dm") {
+        const otherMember = room.members.find((m) => m.userId !== userId);
+        const otherRole = otherMember?.user.role ?? "";
+        if (!["ADMIN", "PROJECT_MANAGER"].includes(otherRole)) return false;
+      }
+      // Clients should not be in general "All Hands" groups
+      if (room.type === "general_group") return false;
+    } else if (!isAdminOrPM) {
+      // Non-managers (Dev, Designer, etc.) cannot see DMs that involve a CLIENT
+      if (room.type === "general_dm") {
+        const hasClient = room.members.some((m) => m.user.role === "CLIENT");
+        if (hasClient) return false;
+      }
     }
     return true;
+  }).map(room => {
+    // Filter out SUPER_ADMIN from members list for EVERYONE (hidden role)
+    // Also filter out non-managers if the viewer is a CLIENT
+    const filteredMembers = room.members.filter(m => {
+      if (m.user.role === "SUPER_ADMIN") return false;
+      if (role === "CLIENT") {
+        return ["ADMIN", "PROJECT_MANAGER", "CLIENT"].includes(m.user.role);
+      }
+      return true;
+    });
+
+    return {
+      ...room,
+      members: filteredMembers,
+    };
   });
 
   return NextResponse.json({ data: finalRooms });

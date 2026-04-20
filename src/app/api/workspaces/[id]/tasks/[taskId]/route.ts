@@ -52,6 +52,7 @@ export const PATCH = apiHandler(async (req: NextRequest, ctx) => {
       status: true,
       attachments: true,
       thumbnailPath: true,
+      postedAt: true,
     },
   });
   if (!existing) return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
@@ -160,7 +161,7 @@ export const DELETE = apiHandler(async (req: NextRequest, ctx) => {
   if (!task) return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
   if (task.createdById !== userId) {
     const userRole = req.headers.get("x-user-role") ?? "";
-    if (!["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(userRole)) forbidden();
+    if (!["ADMIN", "PROJECT_MANAGER"].includes(userRole)) forbidden();
   }
 
   for (const p of task.attachments) {

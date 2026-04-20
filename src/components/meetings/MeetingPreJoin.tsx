@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Camera, Mic, MicOff, Video, VideoOff } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Mic, MicOff, Video, VideoOff, Settings, X } from "lucide-react";
 
 interface MeetingPreJoinProps {
   roomName: string;
@@ -10,65 +10,105 @@ interface MeetingPreJoinProps {
 }
 
 export default function MeetingPreJoin({ roomName, onJoin, onCancel }: MeetingPreJoinProps) {
-  const [audio, setAudio] = useState(true);
-  const [video, setVideo] = useState(true);
+  const [audioEnabled, setAudioEnabled] = useState(true);
+  const [videoEnabled, setVideoEnabled] = useState(true);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  useEffect(() => {
+    async function startPreview() {
+      if (videoEnabled) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+          });
+          streamRef.current = stream;
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+          }
+        } catch (err) {
+          console.error("Error accessing camera:", err);
+          setVideoEnabled(false);
+        }
+      } else {
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((t) => t.stop());
+          streamRef.current = null;
+        }
+        if (videoRef.current) {
+          videoRef.current.srcObject = null;
+        }
+      }
+    }
+
+    startPreview();
+
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, [videoEnabled]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="bg-base-200 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden border border-base-content/10">
-        <div className="p-6 space-y-6">
-          <div className="text-center">
-            <h2 className="text-xl font-bold text-base-content">Ready to join?</h2>
-            <p className="text-sm text-base-content/50 mt-1">{roomName}</p>
-          </div>
-
-          {/* Camera Preview Placeholder */}
-          <div className="aspect-video bg-base-300 rounded-xl flex items-center justify-center relative group overflow-hidden border border-base-content/5">
-            {video ? (
-              <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent flex items-end p-4">
-                <p className="text-white text-xs font-medium">Camera is ON</p>
-              </div>
-            ) : (
-              <div className="text-center space-y-2">
-                <VideoOff className="w-12 h-12 text-base-content/20 mx-auto" />
-                <p className="text-xs text-base-content/40">Camera is OFF</p>
-              </div>
-            )}
-            
-            {/* Controls overlay */}
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3">
-              <button
-                onClick={() => setAudio(!audio)}
-                className={`btn btn-circle btn-sm ${audio ? "btn-ghost bg-white/10 hover:bg-white/20 text-white" : "btn-error"}`}
-              >
-                {audio ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
-              </button>
-              <button
-                onClick={() => setVideo(!video)}
-                className={`btn btn-circle btn-sm ${video ? "btn-ghost bg-white/10 hover:bg-white/20 text-white" : "btn-error"}`}
-              >
-                {video ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
-              </button>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-base-100/80 backdrop-blur-sm p-4">
+      <div className="bg-base-200 border border-base-content/10 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col md:flex-row">
+        {/* Preview Area */}
+        <div className="flex-1 bg-black relative aspect-video md:aspect-auto flex items-center justify-center">
+          {videoEnabled ? (
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover mirror"
+            />
+          ) : (
+            <div className="text-white/40 flex flex-col items-center gap-2">
+              <VideoOff className="w-12 h-12" />
+              <p className="text-sm">Camera is off</p>
             </div>
-          </div>
-
-          <div className="flex flex-col gap-2">
+          )}
+          
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-3">
             <button
-              className="btn btn-primary w-full shadow-lg shadow-primary/20"
-              onClick={() => onJoin({ audio, video })}
+              onClick={() => setAudioEnabled(!audioEnabled)}
+              className={`btn btn-circle ${audioEnabled ? "btn-primary" : "btn-error"}`}
             >
-              Join Meeting
+              {audioEnabled ? <Mic /> : <MicOff />}
             </button>
-            <button className="btn btn-ghost w-full btn-sm" onClick={onCancel}>
-              Cancel
+            <button
+              onClick={() => setVideoEnabled(!videoEnabled)}
+              className={`btn btn-circle ${videoEnabled ? "btn-primary" : "btn-error"}`}
+            >
+              {videoEnabled ? <Video /> : <VideoOff />}
             </button>
           </div>
         </div>
-        
-        <div className="bg-base-300/50 p-4 border-t border-base-content/5">
-          <p className="text-[10px] text-center text-base-content/40 uppercase tracking-widest font-bold">
-            Secure Encryption Enabled
-          </p>
+
+        {/* Join Info Area */}
+        <div className="p-8 flex flex-col justify-center gap-6 md:w-80 bg-base-200">
+          <div className="text-center md:text-left">
+            <h2 className="text-2xl font-bold mb-1">Ready to join?</h2>
+            <p className="text-base-content/60 text-sm truncate">{roomName}</p>
+          </div>
+
+          <div className="space-y-3">
+            <button
+              onClick={() => onJoin({ audio: audioEnabled, video: videoEnabled })}
+              className="btn btn-primary w-full shadow-lg"
+            >
+              Join Now
+            </button>
+            <button onClick={onCancel} className="btn btn-ghost w-full">
+              Cancel
+            </button>
+          </div>
+
+          <div className="text-[10px] text-center opacity-40 uppercase tracking-widest">
+            Powered by LiveKit
+          </div>
         </div>
       </div>
     </div>

@@ -16,12 +16,18 @@ export const POST = apiHandler(async (req: NextRequest) => {
   }
 
   const viewerRole = req.headers.get("x-user-role") ?? "";
-  const canChatWithClients = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(viewerRole);
+  const canChatWithClients = ["ADMIN", "PROJECT_MANAGER"].includes(viewerRole);
 
   const targetUser = await prisma.user.findUnique({
     where: { id: targetUserId },
     select: { role: true },
   });
+
+  if (viewerRole === "CLIENT") {
+    if (!["ADMIN", "PROJECT_MANAGER"].includes(targetUser?.role ?? "")) {
+      return NextResponse.json({ error: "Clients can only DM managers and admins" }, { status: 403 });
+    }
+  }
 
   if (targetUser?.role === "CLIENT" && !canChatWithClients) {
     return NextResponse.json({ error: "Only managers and admins can DM clients" }, { status: 403 });

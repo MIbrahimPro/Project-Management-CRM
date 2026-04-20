@@ -7,7 +7,7 @@ import { uploadFile } from "@/lib/supabase-storage";
 
 export const dynamic = "force-dynamic";
 
-const FINANCE_ROLES = ["SUPER_ADMIN", "ADMIN", "ACCOUNTANT"];
+const FINANCE_ROLES = ["ADMIN", "ACCOUNTANT"];
 
 const entrySchema = z.object({
   type: z.enum(["INCOME", "EXPENSE"]),

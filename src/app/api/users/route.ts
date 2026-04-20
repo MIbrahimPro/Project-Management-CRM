@@ -8,17 +8,27 @@ export const GET = apiHandler(async (req: NextRequest) => {
   const userId = req.headers.get("x-user-id") ?? forbidden();
   const url = new URL(req.url);
   const q = url.searchParams.get("q")?.trim() ?? "";
-
   const viewerRole = req.headers.get("x-user-role") ?? "";
-  const canChatWithClients = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(viewerRole);
+
+  const isAdminOrPM = ["ADMIN", "PROJECT_MANAGER"].includes(viewerRole);
+
+  const where: any = {
+    isActive: true,
+    id: { not: userId },
+    role: { not: "SUPER_ADMIN" }, // SUPER_ADMIN is a hidden role
+  };
+
+  if (viewerRole === "CLIENT") {
+    // Clients only see Managers and Admins
+    where.role = { in: ["ADMIN", "PROJECT_MANAGER"] };
+  } else if (!isAdminOrPM) {
+    // Regular team members (Dev, Designer, HR, etc.) see everyone except CLIENT and SUPER_ADMIN
+    where.role = { notIn: ["SUPER_ADMIN", "CLIENT"] };
+  }
 
   const users = await prisma.user.findMany({
     where: {
-      isActive: true,
-      role: {
-        notIn: canChatWithClients ? ["SUPER_ADMIN"] : ["SUPER_ADMIN", "CLIENT"],
-      },
-      id: { not: userId }, // exclude self
+      ...where,
       ...(q ? { name: { contains: q, mode: "insensitive" } } : {}),
     },
     select: { id: true, name: true, role: true, profilePicUrl: true },

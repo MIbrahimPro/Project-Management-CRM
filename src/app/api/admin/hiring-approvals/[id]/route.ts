@@ -5,7 +5,7 @@ import { logAction } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
-const ADMIN_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"];
+const ADMIN_ROLES = ["ADMIN", "PROJECT_MANAGER"];
 
 function adminOnly(req: NextRequest) {
   if (!ADMIN_ROLES.includes(req.headers.get("x-user-role") ?? "")) {

@@ -93,22 +93,22 @@ function MilestoneFolder({
 
   return (
     <div>
-      <div className="flex items-center gap-1 group">
+      <div className="flex items-center gap-1">
         <button
-          className="flex items-center gap-1.5 flex-1 px-2 py-1.5 rounded-lg hover:bg-base-300 text-left"
+          className="flex items-center gap-1.5 flex-1 min-w-0 px-2 py-1.5 rounded-lg hover:bg-base-300 text-left"
           onClick={() => setOpen((o) => !o)}
         >
           <ChevronRight
             className={`w-3.5 h-3.5 flex-shrink-0 text-base-content/40 transition-transform ${open ? "rotate-90" : ""}`}
           />
           <FolderOpen className="w-3.5 h-3.5 flex-shrink-0 text-primary/60" />
-          <span className="text-sm font-medium text-base-content/70 truncate">
+          <span className="text-sm font-medium text-base-content/70 truncate" title={`M${milestone.order}: ${milestone.title}`}>
             M{milestone.order}: {milestone.title}
           </span>
         </button>
         {canAdd && (
           <button
-            className="btn btn-ghost btn-xs btn-circle opacity-0 group-hover:opacity-100 transition-opacity mr-1"
+            className="btn btn-ghost btn-xs btn-circle flex-shrink-0 mr-1"
             title="Add doc to milestone"
             onClick={() => onNewDoc({ milestoneId: milestone.id, docType: "milestone_doc" })}
           >
@@ -142,7 +142,7 @@ export function DocTree({
   onSelect,
   onNewDoc,
 }: DocTreeProps) {
-  const isManager = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(currentUserRole);
+  const isManager = ["ADMIN", "PROJECT_MANAGER"].includes(currentUserRole);
   const isClient = currentUserRole === "CLIENT";
 
   // Requirements doc (always first)

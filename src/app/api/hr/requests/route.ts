@@ -6,7 +6,7 @@ import { logAction } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
-const HR_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "HR"];
+const HR_ROLES = ["ADMIN", "PROJECT_MANAGER", "HR"];
 
 const createSchema = z.object({
   statedRole: z.string().min(1).max(100),
@@ -63,7 +63,7 @@ export const POST = apiHandler(async (req: NextRequest) => {
 
   const body = createSchema.parse(await req.json());
 
-  const isManager = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(userRole);
+  const isManager = ["ADMIN", "PROJECT_MANAGER"].includes(userRole);
 
   const request = await prisma.$transaction(async (tx) => {
     const req = await tx.hiringRequest.create({

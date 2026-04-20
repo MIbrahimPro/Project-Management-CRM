@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 
 export const dynamic = "force-dynamic";
 
-const HR_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "HR"];
+const HR_ROLES = ["ADMIN", "PROJECT_MANAGER", "HR"];
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 export const POST = apiHandler(async (req: NextRequest, ctx) => {

@@ -17,7 +17,7 @@ const TEAM_ROLES: UserRole[] = [
 
 export const GET = apiHandler(async (req: NextRequest) => {
   const role = req.headers.get("x-user-role") ?? "";
-  if (!["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(role)) forbidden();
+  if (!["ADMIN", "PROJECT_MANAGER"].includes(role)) forbidden();
 
   const members = await prisma.user.findMany({
     where: { role: { in: TEAM_ROLES }, isActive: true },

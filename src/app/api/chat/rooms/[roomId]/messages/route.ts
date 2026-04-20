@@ -75,9 +75,21 @@ export const GET = apiHandler(
       data: { lastReadAt: new Date() },
     });
 
+    const role = req.headers.get("x-user-role") ?? "";
+
+    // Strictly filter out SUPER_ADMIN messages for EVERYONE (hidden role)
+    // Also filter out non-managers if the viewer is a CLIENT
+    let finalMessages = result.filter(m => m.sender.role !== "SUPER_ADMIN");
+
+    if (role === "CLIENT") {
+      finalMessages = finalMessages.filter(m => 
+        ["ADMIN", "PROJECT_MANAGER", "CLIENT"].includes(m.sender.role)
+      );
+    }
+
     return NextResponse.json({
       data: {
-        messages: result.reverse(), // oldest first for display
+        messages: finalMessages.reverse(), // oldest first for display
         nextCursor: hasMore ? result[0].id : null,
       },
     });
@@ -107,7 +119,7 @@ export const POST = apiHandler(
     }
 
     if (member.room.type === "custom_group" && member.room.adminsOnlyPosting) {
-      const isGlobalManager = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(req.headers.get("x-user-role") ?? "");
+      const isGlobalManager = ["ADMIN", "PROJECT_MANAGER"].includes(req.headers.get("x-user-role") ?? "");
       if (!isGlobalManager && !member.isGroupAdmin) {
         return NextResponse.json(
           { error: "Only admins can post in this group" },

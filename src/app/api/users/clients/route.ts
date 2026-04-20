@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export const GET = apiHandler(async (req: NextRequest) => {
   const role = req.headers.get("x-user-role") ?? "";
-  if (!["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(role)) forbidden();
+  if (!["ADMIN", "PROJECT_MANAGER"].includes(role)) forbidden();
 
   const clients = await prisma.user.findMany({
     where: { role: "CLIENT", isActive: true },

@@ -114,6 +114,43 @@ export async function middleware(req: NextRequest) {
   }
 
   const res = NextResponse.next({ request: { headers: auth.requestHeaders } });
+
+  // Role-based route protection
+  const role = auth.payload.role;
+
+  // SUPER_ADMIN can ONLY access /control and /api/super-admin — redirect everything else
+  if (role === "SUPER_ADMIN") {
+    if (!pathname.startsWith("/control") && !pathname.startsWith("/api/super-admin") && !pathname.startsWith("/api/auth")) {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json({ error: "Not found" }, { status: 404 });
+      }
+      return NextResponse.redirect(new URL("/control", req.url));
+    }
+    return withSetCookies(res, auth.setCookieHeaders);
+  }
+  
+  const ROUTE_PERMISSIONS: Record<string, string[]> = {
+    "/hr": ["ADMIN", "PROJECT_MANAGER", "HR"],
+    "/accountant": ["ADMIN", "ACCOUNTANT"],
+    "/admin/hiring": ["ADMIN"],
+    "/admin": ["ADMIN", "PROJECT_MANAGER"],
+    "/projects/new": ["ADMIN", "PROJECT_MANAGER"],
+    "/tasks": ["ADMIN", "PROJECT_MANAGER", "DEVELOPER", "DESIGNER", "HR", "ACCOUNTANT", "SALES"],
+    "/workspaces": ["ADMIN", "PROJECT_MANAGER", "DEVELOPER", "DESIGNER", "HR", "ACCOUNTANT", "SALES"],
+    "/attendance": ["ADMIN", "PROJECT_MANAGER", "DEVELOPER", "DESIGNER", "HR", "ACCOUNTANT", "SALES"],
+  };
+
+  for (const [route, allowedRoles] of Object.entries(ROUTE_PERMISSIONS)) {
+    if (pathname.startsWith(route)) {
+      if (!allowedRoles.includes(role)) {
+        if (pathname.startsWith("/api/")) {
+          return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
+        return NextResponse.redirect(new URL("/dashboard", req.url));
+      }
+    }
+  }
+
   return withSetCookies(res, auth.setCookieHeaders);
 }
 

@@ -29,7 +29,10 @@
       "Bash(npx eslint:*)",
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "WebFetch(domain:docs.livekit.io)",
+      "WebFetch(domain:livekit.io)",
+      "WebFetch(domain:livekit.com)"
     ]
   }
 }

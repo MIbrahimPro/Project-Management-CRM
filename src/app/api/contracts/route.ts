@@ -5,14 +5,18 @@ import { uploadFile } from "@/lib/supabase-storage";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 
-const CONTRACT_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "HR"];
+const CONTRACT_ROLES = ["ADMIN", "PROJECT_MANAGER", "HR"];
 
 export const GET = apiHandler(async (req: NextRequest) => {
   const userId = req.headers.get("x-user-id")!;
   const userRole = req.headers.get("x-user-role")!;
   const isManager = CONTRACT_ROLES.includes(userRole);
+  const url = new URL(req.url);
+  /** Profile / self-service: only this user's contract(s), even for HR/Admin/PM. */
+  const mineOnly =
+    url.searchParams.get("mine") === "1" || url.searchParams.get("scope") === "self";
 
-  if (!isManager) {
+  if (!isManager || mineOnly) {
     const contracts = await prisma.contract.findMany({
       where: { userId },
       include: {
@@ -40,7 +44,7 @@ export const GET = apiHandler(async (req: NextRequest) => {
   // Manager/HR view: show all employees and their contracts
   const employees = await prisma.user.findMany({
     where: {
-      role: { notIn: ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "CLIENT"] },
+      role: { notIn: ["ADMIN", "PROJECT_MANAGER", "CLIENT"] },
       isActive: true,
     },
     include: {

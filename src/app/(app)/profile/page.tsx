@@ -124,7 +124,7 @@ export default function ProfilePage() {
   useEffect(() => {
     if (profile && profile.role !== "CLIENT") {
       setFetchingContracts(true);
-      fetch("/api/contracts")
+      fetch("/api/contracts?mine=1", { credentials: "include" })
         .then((r) => r.json())
         .then((d) => setContracts(d.data || []))
         .finally(() => setFetchingContracts(false));
@@ -132,12 +132,18 @@ export default function ProfilePage() {
   }, [profile]);
   async function handleSign(contractId: string) {
     try {
-      const res = await fetch(`/api/contracts/${contractId}/sign`, { method: "POST" });
-      const data = await res.json();
+      const res = await fetch(`/api/contracts/${contractId}/sign`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = (await res.json()) as { error?: string; data?: { status?: string } };
       if (!res.ok) throw new Error(data.error || "Signing failed");
-      
+
       toast.success("Contract signed successfully");
-      setContracts(contracts.map(c => c.id === contractId ? { ...c, status: "SIGNED" } : c));
+      const nextStatus = data.data?.status ?? "SIGNED";
+      setContracts((prev) =>
+        prev.map((c) => (c.id === contractId ? { ...c, status: nextStatus } : c))
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to sign contract");
     }

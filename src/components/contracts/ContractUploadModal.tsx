@@ -10,6 +10,7 @@ interface User {
   name: string;
   email: string;
   profilePicUrl: string | null;
+  role: string;
 }
 
 interface ContractUploadModalProps {

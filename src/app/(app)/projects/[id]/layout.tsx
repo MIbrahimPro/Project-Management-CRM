@@ -43,9 +43,11 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
     if (!projectId || !pathname) return "";
     if (pathname.endsWith(`/projects/${projectId}`)) return "Dashboard";
     if (pathname.includes(`/projects/${projectId}/chat`)) return "Chat";
-    if (pathname.includes(`/projects/${projectId}/documents`)) return "Documents";
+    if (pathname.includes(`/projects/${projectId}/meetings`)) return "Meetings";
+    if (pathname.includes(`/projects/${projectId}/documents`)) return "Milestone Docs";
     if (pathname.includes(`/projects/${projectId}/questions`)) return "Questions";
     if (pathname.includes(`/projects/${projectId}/vault`)) return "Vault";
+    if (pathname.includes(`/projects/${projectId}/tasks`)) return "Tasks";
     return "Project";
   }, [pathname, projectId]);
 
@@ -92,8 +94,10 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
           <li>
             <Link href="/projects">Projects</Link>
           </li>
-          <li className="font-medium text-base-content">
-            {projectTitle || "Project"}
+          <li>
+            <Link href={`/projects/${projectId}`} className="font-medium text-base-content">
+              {projectTitle || "Project"}
+            </Link>
           </li>
           {sectionLabel && sectionLabel !== "Dashboard" && <li>{sectionLabel}</li>}
         </ul>

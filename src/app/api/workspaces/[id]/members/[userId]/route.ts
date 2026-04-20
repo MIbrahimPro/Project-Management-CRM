@@ -5,7 +5,7 @@ import { logAction } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
-const MANAGER_ROLES = new Set(["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"]);
+const MANAGER_ROLES = new Set(["ADMIN", "PROJECT_MANAGER"]);
 
 function canManageMembers(role: string, workspaceCreatedById: string, actorId: string): boolean {
   return MANAGER_ROLES.has(role) || workspaceCreatedById === actorId;

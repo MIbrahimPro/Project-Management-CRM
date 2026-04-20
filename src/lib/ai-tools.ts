@@ -86,7 +86,7 @@ export async function executeTool(name: string, args: any) {
           projectId: args.projectId,
           ...(args.status ? { status: args.status } : {})
         },
-        select: { title: true, status: true, dueDate: true },
+        select: { title: true, status: true, createdAt: true },
         take: 50
       });
       return { tasks };
@@ -105,15 +105,15 @@ export async function executeTool(name: string, args: any) {
       const questions = await prisma.projectQuestion.findMany({
         where: { projectId: args.projectId },
         include: { 
-          answers: { select: { text: true, createdAt: true }, orderBy: { createdAt: "desc" }, take: 1 } 
+          answers: { select: { content: true, createdAt: true }, orderBy: { createdAt: "desc" }, take: 1 } 
         },
         orderBy: { createdAt: "desc" }
       });
       return { 
         questions: questions.map(q => ({
           text: q.text,
-          status: q.status,
-          lastAnswer: q.answers[0]?.text
+          isApproved: q.isApproved,
+          lastAnswer: q.answers[0]?.content
         })) 
       };
     }

@@ -4,8 +4,8 @@ import { apiHandler, forbidden } from "@/lib/api-handler";
 
 export const dynamic = "force-dynamic";
 
-const HR_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "HR"];
-const EXCLUDED_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "CLIENT"];
+const HR_ROLES = ["ADMIN", "PROJECT_MANAGER", "HR"];
+const EXCLUDED_ROLES = ["ADMIN", "PROJECT_MANAGER", "CLIENT"];
 
 export const GET = apiHandler(async (req: NextRequest) => {
   const userId = req.headers.get("x-user-id");

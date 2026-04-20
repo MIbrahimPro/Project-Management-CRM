@@ -7,7 +7,7 @@ import { logAction } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
-const MANAGER_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"] as const;
+const MANAGER_ROLES = ["ADMIN", "PROJECT_MANAGER"] as const;
 
 export const GET = apiHandler(
   async (req: NextRequest, ctx?: { params: Record<string, string> }) => {
@@ -42,6 +42,7 @@ export const GET = apiHandler(
           },
         },
         milestone: { select: { id: true, order: true, title: true } },
+        createdBy: { select: { id: true, name: true, role: true } },
       },
     });
 
@@ -76,6 +77,11 @@ export const POST = apiHandler(
         isApproved: isManager,
         isAiGenerated: false,
         createdById: userId,
+      },
+      include: {
+        answers: true,
+        milestone: { select: { id: true, order: true, title: true } },
+        createdBy: { select: { id: true, name: true, role: true } },
       },
     });
 

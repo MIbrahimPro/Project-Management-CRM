@@ -6,16 +6,28 @@ import { logAction } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
-// Vault is hidden from CLIENT role and from AI completely.
-// Only project members + managers + admins can access.
-async function canAccess(userId: string, role: string, projectId: string): Promise<boolean> {
-  if (role === "CLIENT") return false;
-  if (["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(role)) return true;
+// Anyone with project access can READ the vault.
+async function canRead(userId: string, role: string, projectId: string): Promise<boolean> {
+  if (["ADMIN", "PROJECT_MANAGER"].includes(role)) return true;
+  // CLIENT is the project's client?
+  const project = await prisma.project.findUnique({ where: { id: projectId }, select: { clientId: true } });
+  if (project?.clientId === userId) return true;
+  // Or a project member
   const member = await prisma.projectMember.findFirst({
     where: { projectId, userId },
     select: { id: true },
   });
   return !!member;
+}
+
+// Admins, managers, and clients can add/update secrets.
+async function canWrite(userId: string, role: string, projectId: string): Promise<boolean> {
+  if (["ADMIN", "PROJECT_MANAGER"].includes(role)) return true;
+  if (role === "CLIENT") {
+    const project = await prisma.project.findUnique({ where: { id: projectId }, select: { clientId: true } });
+    return project?.clientId === userId;
+  }
+  return false;
 }
 
 const CreateSchema = z.object({
@@ -33,7 +45,7 @@ export const GET = apiHandler(
     const projectId = ctx?.params.id;
     if (!projectId) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
-    if (!(await canAccess(userId, role, projectId))) forbidden();
+    if (!(await canRead(userId, role, projectId))) forbidden();
 
     const secrets = await prisma.projectSecret.findMany({
       where: { projectId },
@@ -61,7 +73,7 @@ export const POST = apiHandler(
     const projectId = ctx?.params.id;
     if (!projectId) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
-    if (!(await canAccess(userId, role, projectId))) forbidden();
+    if (!(await canWrite(userId, role, projectId))) forbidden();
 
     const body = CreateSchema.parse(await req.json());
 

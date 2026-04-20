@@ -5,14 +5,15 @@ import { logAction } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
-async function canAccess(userId: string, role: string, projectId: string): Promise<boolean> {
-  if (role === "CLIENT") return false;
-  if (["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(role)) return true;
-  const member = await prisma.projectMember.findFirst({
-    where: { projectId, userId },
-    select: { id: true },
-  });
-  return !!member;
+async function canDelete(userId: string, role: string, projectId: string): Promise<boolean> {
+  // Only managers/admins can delete vault secrets
+  if (["ADMIN", "PROJECT_MANAGER"].includes(role)) return true;
+  // Client can also delete secrets they might have added
+  if (role === "CLIENT") {
+    const project = await prisma.project.findUnique({ where: { id: projectId }, select: { clientId: true } });
+    return project?.clientId === userId;
+  }
+  return false;
 }
 
 export const DELETE = apiHandler(
@@ -25,7 +26,7 @@ export const DELETE = apiHandler(
     const secretId = ctx?.params.secretId;
     if (!projectId || !secretId) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
-    if (!(await canAccess(userId, role, projectId))) forbidden();
+    if (!(await canDelete(userId, role, projectId))) forbidden();
 
     const existing = await prisma.projectSecret.findUnique({
       where: { id: secretId },

@@ -4,12 +4,12 @@ import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { HocuspocusProvider } from "@hocuspocus/provider";
 import {
   useCreateBlockNote,
-  SuggestionMenuController,
   getDefaultReactSlashMenuItems,
   type DefaultReactSuggestionItem,
   FormattingToolbar,
   FormattingToolbarController,
 } from "@blocknote/react";
+import { SuggestionMenuControllerSolid } from "@/components/blocknote/SuggestionMenuControllerSolid";
 import { BlockNoteView } from "@blocknote/mantine";
 import { filterSuggestionItems } from "@blocknote/core";
 import { Sparkles } from "lucide-react";
@@ -161,7 +161,11 @@ export default function DocumentEditor({
       });
       const data = (await res.json()) as { data?: { content?: string } };
       const output = data.data?.content?.trim() ?? "";
-      if (output) editor.insertInlineContent(`\n${output}\n`);
+      if (output) {
+        const blocks = await editor.tryParseMarkdownToBlocks(output);
+        const cursorBlock = editor.getTextCursorPosition().block;
+        editor.insertBlocks(blocks, cursorBlock, "after");
+      }
       setAiPromptOpen(false);
       setAiPrompt("");
     } finally {
@@ -178,18 +182,27 @@ export default function DocumentEditor({
 
   useEffect(() => {
     if (synced && editor && initialContent && !readOnly) {
-      // Small delay to ensure Yjs sync is fully settled
       const timer = setTimeout(async () => {
-        const isDocEmpty = editor.topLevelBlocks.length === 0 || 
-                          (editor.topLevelBlocks.length === 1 && 
-                           (!editor.topLevelBlocks[0].content || (Array.isArray(editor.topLevelBlocks[0].content) && editor.topLevelBlocks[0].content.length === 0)));
-        
+        const isDocEmpty =
+          editor.topLevelBlocks.length === 0 ||
+          (editor.topLevelBlocks.length === 1 &&
+            (!editor.topLevelBlocks[0].content ||
+              (Array.isArray(editor.topLevelBlocks[0].content) &&
+                editor.topLevelBlocks[0].content.length === 0)));
+
         if (isDocEmpty) {
           try {
-            const blocks = await editor.tryParseMarkdownToBlocks(initialContent);
-            editor.replaceBlocks(editor.topLevelBlocks, blocks);
+            const trimmed = initialContent.trim();
+            // Detect stored BlockNote JSON (from projects/new markdown→JSON conversion)
+            if (trimmed.startsWith("[{") || trimmed.startsWith("[  {")) {
+              const blocks = JSON.parse(trimmed) as Parameters<typeof editor.replaceBlocks>[1];
+              editor.replaceBlocks(editor.topLevelBlocks, blocks);
+            } else {
+              const blocks = await editor.tryParseMarkdownToBlocks(trimmed);
+              editor.replaceBlocks(editor.topLevelBlocks, blocks);
+            }
           } catch (err) {
-            console.error("[BlockNote] Failed to initialize with markdown:", err);
+            console.error("[BlockNote] Failed to initialize content:", err);
           }
         }
       }, 500);
@@ -214,7 +227,19 @@ export default function DocumentEditor({
 
   const slashItems = useCallback(
     async (query: string): Promise<DefaultReactSuggestionItem[]> => {
-      const defaults = getDefaultReactSlashMenuItems(editor);
+      const defaults = getDefaultReactSlashMenuItems(editor).filter((item) => {
+        const haystack = [
+          item.title,
+          item.subtext,
+          ...(item.aliases ?? []),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        // Emoji slash command is intentionally disabled for now.
+        return !/(emoji|emoticon|smile|smiley)/.test(haystack);
+      });
       const aiItem: DefaultReactSuggestionItem = {
         title: "AI: Write with prompt",
         subtext: "Generate and insert content using AI",
@@ -238,7 +263,44 @@ export default function DocumentEditor({
   }
 
   return (
-    <div className="bn-editor-wrapper h-full relative" ref={wrapperRef}>
+    <div className="bn-editor-wrapper h-full relative flex flex-col" ref={wrapperRef}>
+      {/* Always-visible AI actions bar */}
+      {!readOnly && (
+        <div className="flex items-center gap-1 px-3 py-1.5 bg-base-200/70 border-b border-base-300 flex-shrink-0">
+          <span className="text-[10px] font-semibold text-base-content/40 uppercase tracking-wide mr-1">AI</span>
+          <button
+            className="btn btn-ghost btn-xs gap-1 text-primary"
+            onClick={() => void runSelectionAiAction("summarize")}
+            disabled={selectionBusy !== null || !selectedText}
+            title={selectedText ? "Summarize selected text" : "Select text first"}
+          >
+            {selectionBusy === "summarize" ? <span className="loading loading-spinner loading-xs" /> : <Sparkles className="w-3 h-3" />}
+            Summarize
+          </button>
+          <button
+            className="btn btn-ghost btn-xs gap-1 text-secondary"
+            onClick={() => void runSelectionAiAction("professionalize")}
+            disabled={selectionBusy !== null || !selectedText}
+            title={selectedText ? "Professionalize selected text" : "Select text first"}
+          >
+            {selectionBusy === "professionalize" ? <span className="loading loading-spinner loading-xs" /> : <Sparkles className="w-3 h-3" />}
+            Fix
+          </button>
+          <div className="w-px h-4 bg-base-300 mx-1" />
+          <button
+            className="btn btn-ghost btn-xs gap-1 text-base-content/60"
+            onClick={() => setAiPromptOpen(true)}
+            title="Write with AI"
+          >
+            <Sparkles className="w-3 h-3" />
+            Write…
+          </button>
+          {selectedText && (
+            <span className="text-[10px] text-base-content/30 ml-1 truncate max-w-[160px]">&ldquo;{selectedText.slice(0, 40)}{selectedText.length > 40 ? "…" : ""}&rdquo; selected</span>
+          )}
+        </div>
+      )}
+      <div className="flex-1 min-h-0">
       <BlockNoteView
         editor={editor}
         editable={!readOnly}
@@ -247,7 +309,7 @@ export default function DocumentEditor({
         slashMenu={false}
         formattingToolbar={false}
       >
-        <SuggestionMenuController triggerCharacter="/" getItems={slashItems} />
+        <SuggestionMenuControllerSolid triggerCharacter="/" getItems={slashItems} />
         <FormattingToolbarController
           formattingToolbar={(props) => (
             <FormattingToolbar {...props}>
@@ -275,7 +337,7 @@ export default function DocumentEditor({
           )}
         />
       </BlockNoteView>
-
+      </div>
 
       <dialog className={`modal ${aiPromptOpen ? "modal-open" : ""}`}>
         <div className="modal-box bg-base-200 max-w-lg">

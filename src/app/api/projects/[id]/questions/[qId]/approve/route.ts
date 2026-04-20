@@ -9,17 +9,29 @@ export const PATCH = apiHandler(
   async (req: NextRequest, ctx?: { params: Record<string, string> }) => {
     const userId = req.headers.get("x-user-id") ?? forbidden();
     const role = req.headers.get("x-user-role") ?? "";
-    if (!["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(role)) forbidden();
+    if (!["ADMIN", "PROJECT_MANAGER"].includes(role)) forbidden();
 
+    const projectId = ctx?.params.id;
     const qId = ctx?.params.qId;
-    if (!qId) return NextResponse.json({ error: "Missing qId" }, { status: 400 });
+    if (!projectId || !qId) return NextResponse.json({ error: "Missing params" }, { status: 400 });
 
-    await prisma.projectQuestion.update({
-      where: { id: qId },
+    const updated = await prisma.projectQuestion.updateMany({
+      where: { id: qId, projectId },
       data: { isApproved: true },
     });
+    if (updated.count === 0) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
 
     await logAction(userId, "QUESTION_APPROVED", "ProjectQuestion", qId);
+
+    // Server-side broadcast so all viewers get the update even if client relay fails
+    if (global.io) {
+      global.io
+        .of("/chat")
+        .to(`project_questions:${projectId}`)
+        .emit("question_approved", { questionId: qId });
+    }
 
     return NextResponse.json({ success: true });
   }

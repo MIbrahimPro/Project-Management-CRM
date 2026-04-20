@@ -31,7 +31,7 @@ export const PATCH = apiHandler(async (req: NextRequest, ctx?: { params: Record<
     return NextResponse.json({ error: "Group not found or invalid type" }, { status: 404 });
   }
 
-  const isGlobalManager = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(role);
+  const isGlobalManager = ["ADMIN", "PROJECT_MANAGER"].includes(role);
   const isGroupAdmin = room.members.find((m) => m.userId === userId)?.isGroupAdmin;
 
   if (!isGlobalManager && !isGroupAdmin) {

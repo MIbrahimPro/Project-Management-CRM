@@ -12,7 +12,7 @@ const PatchSchema = z.object({
 });
 
 function isManagerRole(role: string) {
-  return ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(role);
+  return ["ADMIN", "PROJECT_MANAGER"].includes(role);
 }
 
 export const GET = apiHandler(

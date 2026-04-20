@@ -184,7 +184,7 @@ export async function POST(req: NextRequest, ctx: { params: { slug: string } }) 
     if (io) {
       // Notify all HR users via the notifications namespace
       const hrUsers = await prisma.user.findMany({
-        where: { role: { in: ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "HR"] }, isActive: true },
+        where: { role: { in: ["ADMIN", "PROJECT_MANAGER", "HR"] }, isActive: true },
         select: { id: true },
       });
       for (const u of hrUsers) {

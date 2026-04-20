@@ -20,7 +20,7 @@ export const POST = apiHandler(async (req: NextRequest) => {
   const role = req.headers.get("x-user-role") ?? "";
 
   // Require Manager or Admin to create a custom group
-  if (!["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(role)) {
+  if (!["ADMIN", "PROJECT_MANAGER"].includes(role)) {
     forbidden();
   }
 

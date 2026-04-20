@@ -49,7 +49,7 @@ export const GET = apiHandler(
     ]);
 
     const isClient = project?.clientId === userId;
-    const isManager = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(role);
+    const isManager = ["ADMIN", "PROJECT_MANAGER"].includes(role);
     if (!member && !isClient && !isManager) forbidden();
 
     let docs;

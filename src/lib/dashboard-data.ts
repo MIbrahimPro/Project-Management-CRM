@@ -40,7 +40,7 @@ export async function fetchDashboardData(userId: string, role: UserRole) {
     },
   });
 
-  if (role === "SUPER_ADMIN" || role === "ADMIN" || role === "PROJECT_MANAGER") {
+  if (role === "ADMIN" || role === "PROJECT_MANAGER") {
     const [
       activeProjects,
       totalClients,
@@ -123,7 +123,7 @@ export async function fetchDashboardData(userId: string, role: UserRole) {
         project: { select: { title: true } },
         assignees: { include: { user: { select: { id: true, name: true, profilePicUrl: true } } } },
       },
-      orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
+      orderBy: [{ createdAt: "desc" }],
       take: 8,
     });
 
@@ -263,7 +263,7 @@ export async function fetchDashboardData(userId: string, role: UserRole) {
         include: {
           project: { select: { title: true } },
         },
-        orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
+        orderBy: [{ createdAt: "desc" }],
         take: 8,
       }),
       prisma.project.findMany({
@@ -316,7 +316,7 @@ export async function fetchDashboardData(userId: string, role: UserRole) {
 }
 
 async function getChartData(role: UserRole) {
-  if (!["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(role)) return null;
+  if (!["ADMIN", "PROJECT_MANAGER"].includes(role)) return null;
 
   const now = new Date();
   const last6Months = Array.from({ length: 6 }).map((_, i) => {

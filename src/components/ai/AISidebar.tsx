@@ -245,7 +245,7 @@ function AISidebarInner() {
       {!isDocked && (
         <motion.button
           drag
-          dragConstraints={{ left: -window.innerWidth + 100, right: 0, top: -window.innerHeight + 100, bottom: 0 }}
+          dragConstraints={{ left: -5000, right: 0, top: -5000, bottom: 0 }}
           dragElastic={0.1}
           dragTransition={{ bounceStiffness: 600, bounceDamping: 20 }}
           whileHover={{ scale: 1.1 }}

@@ -62,7 +62,7 @@ export default function ProjectsPage() {
   // Load client requests once we know the user's role
   useEffect(() => {
     if (!user) return;
-    if (!["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(user.role)) return;
+    if (!["ADMIN", "PROJECT_MANAGER"].includes(user.role)) return;
     fetch("/api/projects/client-requests")
       .then((r) => r.json())
       .then((d: { data: ClientRequest[] }) => setClientRequests(d.data ?? []))
@@ -109,7 +109,7 @@ export default function ProjectsPage() {
   }
 
   const isManagerOrAdmin =
-    user && ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(user.role);
+    user && ["ADMIN", "PROJECT_MANAGER"].includes(user.role);
   const isClient = user?.role === "CLIENT";
 
   return (

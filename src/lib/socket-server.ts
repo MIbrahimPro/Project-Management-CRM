@@ -47,11 +47,30 @@ export function setupSocketServer(io: Server) {
 
     // ---- JOIN ROOM ----
     socket.on("join_room", async (roomId: string) => {
+      // Project questions rooms — just join, no membership check needed (auth middleware already verified user)
+      if (roomId.startsWith("project_questions:")) {
+        socket.join(roomId);
+        return;
+      }
       const member = await prisma.chatRoomMember.findUnique({
         where: { roomId_userId: { roomId, userId } },
       });
       if (!member) return socket.emit("error", "Not a member of this room");
       socket.join(`room:${roomId}`);
+    });
+
+    // ---- LEAVE ROOM ----
+    socket.on("leave_room", (roomId: string) => {
+      if (roomId.startsWith("project_questions:")) {
+        socket.leave(roomId);
+      }
+    });
+
+    // ---- QUESTION ACTION (relay to room) ----
+    socket.on("question_action", (data: { room: string; type: string; payload: unknown }) => {
+      if (!data?.room?.startsWith("project_questions:")) return;
+      // Use namespace + except(sender) so delivery does not depend on relay quirks
+      chatNS.to(data.room).except(socket.id).emit(data.type, data.payload);
     });
 
     // ---- SEND MESSAGE ----
@@ -65,11 +84,30 @@ export function setupSocketServer(io: Server) {
       try {
         void updateLastActive(userId);
 
-        // Verify membership
+        // Verify membership and fetch room/recipient details
         const member = await prisma.chatRoomMember.findUnique({
           where: { roomId_userId: { roomId: data.roomId, userId } },
+          include: { 
+            room: { 
+              include: { 
+                members: { 
+                  include: { user: { select: { role: true } } } 
+                } 
+              } 
+            } 
+          },
         });
         if (!member) return;
+
+        // Restriction: If there's a client in the room, only managers/admins can send messages
+        // (unless the sender IS a client, but they can only be in rooms with managers)
+        const hasClientInRoom = member.room.members.some(m => m.user.role === "CLIENT");
+        const isSenderManager = ["ADMIN", "PROJECT_MANAGER"].includes(socket.data.role);
+        const isSenderClient = socket.data.role === "CLIENT";
+
+        if (hasClientInRoom && !isSenderManager && !isSenderClient) {
+          return socket.emit("error", "Only managers and admins can communicate with clients.");
+        }
 
         const content = data.content?.trim();
 
@@ -240,7 +278,7 @@ export function setupSocketServer(io: Server) {
           where: { roomId_userId: { roomId: msg.roomId, userId } },
         });
         
-        const isManager = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(socket.data.role);
+        const isManager = ["ADMIN", "PROJECT_MANAGER"].includes(socket.data.role);
         const isRoomAdmin = member?.isGroupAdmin;
 
         if (!isManager && !isRoomAdmin) return;

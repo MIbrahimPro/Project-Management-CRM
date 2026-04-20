@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { X, Info, Users, Image as ImageIcon, Link as LinkIcon, Mic, LogOut, Trash2, Camera, UserPlus, Download, ExternalLink, Play, Calendar } from "lucide-react";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import { motion, AnimatePresence } from "framer-motion";
@@ -49,16 +49,7 @@ export function ChatInfoModal({
   const [editingName, setEditingName] = useState(roomName);
   const [isSaving, setIsSaving] = useState(false);
 
-// eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (isOpen) {
-      if (activeTab === "media") fetchMedia();
-      if (activeTab === "links") fetchLinks();
-      if (activeTab === "recordings") fetchRecordings();
-    }
-  }, [isOpen, activeTab, roomId]);
-
-  async function fetchMedia() {
+  const fetchMedia = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch(`/api/chat/rooms/${roomId}/media`);
@@ -69,9 +60,9 @@ export function ChatInfoModal({
     } finally {
       setLoading(false);
     }
-  }
+  }, [roomId]);
 
-  async function fetchLinks() {
+  const fetchLinks = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch(`/api/chat/rooms/${roomId}/links`);
@@ -82,9 +73,9 @@ export function ChatInfoModal({
     } finally {
       setLoading(false);
     }
-  }
+  }, [roomId]);
 
-  async function fetchRecordings() {
+  const fetchRecordings = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch(`/api/chat/rooms/${roomId}/recordings`);
@@ -95,7 +86,15 @@ export function ChatInfoModal({
     } finally {
       setLoading(false);
     }
-  }
+  }, [roomId]);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (activeTab === "media") void fetchMedia();
+      if (activeTab === "links") void fetchLinks();
+      if (activeTab === "recordings") void fetchRecordings();
+    }
+  }, [isOpen, activeTab, roomId, fetchMedia, fetchLinks, fetchRecordings]);
 
   async function handleRename() {
     if (!editingName.trim() || editingName === roomName) return;
@@ -152,7 +151,7 @@ export function ChatInfoModal({
 
   const isCustomGroup = roomType === "custom_group";
   const currentUserMember = members.find((m) => m.userId === currentUser.id);
-  const isGroupAdmin = currentUserMember?.isGroupAdmin || ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(currentUser.role);
+  const isGroupAdmin = currentUserMember?.isGroupAdmin || ["ADMIN", "PROJECT_MANAGER"].includes(currentUser.role);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -220,7 +219,7 @@ export function ChatInfoModal({
               >
                 <div className="flex flex-col items-center gap-4 text-center">
                   <div className="relative group">
-                    <UserAvatar user={{ name: roomName, profilePicUrl: null }} size={120} />
+                    <UserAvatar user={{ name: roomName, profilePicUrl: null }} size={128} />
                     {isGroupAdmin && isCustomGroup && (
                       <button className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-full flex items-center justify-center text-white">
                         <Camera className="w-8 h-8" />
@@ -300,7 +299,7 @@ export function ChatInfoModal({
                       onClick={() => m.userId !== currentUser.id && handleOpenDM(m.userId)}
                     >
                       <div className="flex items-center gap-3">
-                        <UserAvatar user={m.user} size={40} />
+                        <UserAvatar user={m.user} size={48} />
                         <div>
                           <p className="font-medium flex items-center gap-2">
                             {m.user.name}

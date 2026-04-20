@@ -4,7 +4,7 @@ import { apiHandler } from "@/lib/api-handler";
 import { uploadFile } from "@/lib/supabase-storage";
 import { nanoid } from "nanoid";
 
-const CONTRACT_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "HR"];
+const CONTRACT_ROLES = ["ADMIN", "PROJECT_MANAGER", "HR"];
 
 /**
  * POST /api/contracts/[id]/versions

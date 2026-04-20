@@ -3,11 +3,49 @@ import IORedis from "ioredis";
 // Prefer 127.0.0.1 on Windows so we resolve IPv4 consistently (WSL / Docker port forwards).
 const defaultRedisUrl = process.env.REDIS_URL || "redis://127.0.0.1:6379";
 
+function redisUrlHasPasswordInUrl(url: string): boolean {
+  try {
+    return Boolean(new URL(url).password);
+  } catch {
+    return false;
+  }
+}
+
+function isLocalRedisHost(url: string): boolean {
+  try {
+    const h = new URL(url).hostname;
+    return h === "127.0.0.1" || h === "localhost" || h === "::1";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Avoid sending AUTH when connecting to a typical local Redis with no ACL password:
+ * ioredis warns if a password is supplied but the server does not expect one.
+ * Set REDIS_AUTH=true (or 1) if your local Redis does require a password.
+ */
+function resolveRedisPassword(url: string): string | undefined {
+  if (redisUrlHasPasswordInUrl(url)) {
+    return undefined;
+  }
+  const envPw = process.env.REDIS_PASSWORD?.trim();
+  if (!envPw) {
+    return undefined;
+  }
+  const authExplicit =
+    process.env.REDIS_AUTH === "true" || process.env.REDIS_AUTH === "1";
+  if (isLocalRedisHost(url) && !authExplicit) {
+    return undefined;
+  }
+  return envPw;
+}
+
 let lastRedisErrorLogAt = 0;
 const REDIS_ERROR_LOG_INTERVAL_MS = 30_000;
 
 const redis = new IORedis(defaultRedisUrl, {
-  password: process.env.REDIS_PASSWORD || undefined,
+  password: resolveRedisPassword(defaultRedisUrl),
   maxRetriesPerRequest: null,
   connectTimeout: 10_000,
   commandTimeout: 15_000,

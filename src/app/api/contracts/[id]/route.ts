@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { apiHandler } from "@/lib/api-handler";
 import { getSignedUrl } from "@/lib/supabase-storage";
 
-const CONTRACT_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "HR"];
+const CONTRACT_ROLES = ["ADMIN", "PROJECT_MANAGER", "HR"];
 
 /**
  * GET /api/contracts/[id]

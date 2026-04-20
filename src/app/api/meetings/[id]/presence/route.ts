@@ -5,7 +5,7 @@ import { logAction } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
-const MANAGER_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"];
+const MANAGER_ROLES = ["ADMIN", "PROJECT_MANAGER"];
 
 async function assertMeetingAccess(meetingId: string, userId: string, userRole: string) {
   const meeting = await prisma.meeting.findUnique({
@@ -156,6 +156,20 @@ export const DELETE = apiHandler(async (req: NextRequest, ctx) => {
     await logAction(userId, "MEETING_LEFT", "Meeting", meetingId, {
       source: "presence",
     });
+  }
+
+  // If nobody remains in the meeting, mark it ended (auto-end)
+  try {
+    const activeCount = await prisma.meetingParticipant.count({ where: { meetingId, leftAt: null } });
+    if (activeCount === 0) {
+      const meeting = await prisma.meeting.findUnique({ where: { id: meetingId }, select: { endedAt: true, startedAt: true } });
+      if (meeting && !meeting.endedAt && meeting.startedAt) {
+        await prisma.meeting.update({ where: { id: meetingId }, data: { endedAt: new Date() } });
+        await logAction(userId, "MEETING_AUTO_ENDED", "Meeting", meetingId, { source: "presence" });
+      }
+    }
+  } catch (err) {
+    // non-fatal
   }
 
   return NextResponse.json({ data: { joined: false } });

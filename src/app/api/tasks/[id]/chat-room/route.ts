@@ -23,7 +23,7 @@ export const GET = apiHandler(async (req: NextRequest, ctx) => {
   });
   if (!task) return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
 
-  const isManager = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(userRole);
+  const isManager = ["ADMIN", "PROJECT_MANAGER"].includes(userRole);
   const canAccess =
     isManager ||
     task.createdById === userId ||

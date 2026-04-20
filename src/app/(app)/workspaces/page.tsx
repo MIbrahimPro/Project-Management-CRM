@@ -39,7 +39,7 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 const WORKSPACE_TYPES = ["GENERAL", "INSTAGRAM", "LINKEDIN", "TWITTER", "YOUTUBE", "CUSTOM"] as const;
-const MANAGER_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"];
+const MANAGER_ROLES = ["ADMIN", "PROJECT_MANAGER"];
 
 export default function WorkspacesPage() {
   const router = useRouter();

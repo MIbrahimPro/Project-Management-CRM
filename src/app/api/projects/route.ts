@@ -49,7 +49,7 @@ export const GET = apiHandler(async (req: NextRequest) => {
   const userId = req.headers.get("x-user-id") ?? forbidden();
   const role = req.headers.get("x-user-role") ?? "";
 
-  if (["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(role)) {
+  if (["ADMIN", "PROJECT_MANAGER"].includes(role)) {
     const projects = await prisma.project.findMany({
       include: PROJECT_INCLUDE,
       orderBy: { updatedAt: "desc" },
@@ -83,7 +83,7 @@ export const GET = apiHandler(async (req: NextRequest) => {
 export const POST = apiHandler(async (req: NextRequest) => {
   const userId = req.headers.get("x-user-id") ?? forbidden();
   const role = req.headers.get("x-user-role") ?? "";
-  if (!["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(role)) forbidden();
+  if (!["ADMIN", "PROJECT_MANAGER"].includes(role)) forbidden();
 
   const body = (await req.json()) as unknown;
   const {

@@ -18,7 +18,7 @@ interface AIQuestion {
 
 export const POST = apiHandler(async (req: NextRequest) => {
   const role = req.headers.get("x-user-role") ?? "";
-  if (!["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(role)) forbidden();
+  if (!["ADMIN", "PROJECT_MANAGER"].includes(role)) forbidden();
 
   const body = (await req.json()) as unknown;
   const { title, description, milestones } = Schema.parse(body);

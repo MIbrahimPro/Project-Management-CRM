@@ -7,7 +7,7 @@ import { nanoid } from "nanoid";
 
 export const dynamic = "force-dynamic";
 
-const MANAGER_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"];
+const MANAGER_ROLES = ["ADMIN", "PROJECT_MANAGER"];
 const HR_ROLES = [...MANAGER_ROLES, "HR"];
 
 const patchSchema = z.object({

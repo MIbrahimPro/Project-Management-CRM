@@ -11,7 +11,7 @@ const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
 const patchSchema = z.object({
   name: z.string().min(2).max(100).optional(),
   role: z.enum([
-    "SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "DEVELOPER",
+    "ADMIN", "PROJECT_MANAGER", "DEVELOPER",
     "DESIGNER", "HR", "ACCOUNTANT", "SALES", "CLIENT",
   ]).optional(),
   workMode: z.enum(["REMOTE", "ONSITE", "HYBRID"]).optional(),
@@ -37,20 +37,12 @@ export async function PATCH(
   });
   if (!user) return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
 
-  // Non-SUPER_ADMIN cannot edit SUPER_ADMIN
-  if (user.role === "SUPER_ADMIN" && actorRole !== "SUPER_ADMIN") {
-    return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
+  // SUPER_ADMIN accounts cannot be edited from the admin panel
+  if ((user.role as string) === "SUPER_ADMIN") {
+    return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
   }
 
   const body = patchSchema.parse(await req.json());
-
-  // Only SUPER_ADMIN can assign SUPER_ADMIN role
-  if (body.role === "SUPER_ADMIN" && actorRole !== "SUPER_ADMIN") {
-    return NextResponse.json(
-      { error: "Cannot assign SUPER_ADMIN role", code: "FORBIDDEN" },
-      { status: 403 }
-    );
-  }
 
   const updated = await prisma.user.update({
     where: { id: params.id },

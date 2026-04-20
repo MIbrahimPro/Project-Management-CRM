@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -184,7 +185,9 @@ model User {
   workspaceMembers      WorkspaceMember[]
   accountEntriesCreated AccountEntry[]           @relation("EntryCreator")
   questionAnswers       QuestionAnswer[]
+  questionsCreated      ProjectQuestion[]        @relation("QuestionCreator")
   meetingParticipants   MeetingParticipant[]
+  meetingInvitees       MeetingInvitee[]
   chatRoomMemberships   ChatRoomMember[]
   chatRoomsCreated      ChatRoom[]              @relation("ChatRoomCreator")
   workspaceTaskActivity WorkspaceTask[]          @relation("WorkspaceTaskCreator")
@@ -369,6 +372,7 @@ model ProjectQuestion {
   isApproved  Boolean  @default(false)
   isAiGenerated Boolean  @default(false)
   createdById String
+  createdBy   User     @relation("QuestionCreator", fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
 
   answers QuestionAnswer[]
@@ -626,29 +630,43 @@ model Attendance {
 // ============================================================
 
 model Meeting {
-  id           String    @id @default(cuid())
-  projectId    String?
-  project      Project?  @relation(fields: [projectId], references: [id])
-  workspaceId  String?
-  workspace    Workspace? @relation(fields: [workspaceId], references: [id])
-  taskId       String?
-  task         Task?      @relation(fields: [taskId], references: [id])
-  interviewId  String?    @unique
-  interview    Interview? @relation(fields: [interviewId], references: [id])
-  chatRoomId   String?
-  title        String
-  jitsiRoomId  String    @unique
-  startedAt    DateTime  @default(now())
-  endedAt      DateTime?
-  createdById  String
-  createdAt    DateTime  @default(now())
+  id              String    @id @default(cuid())
+  projectId       String?
+  project         Project?  @relation(fields: [projectId], references: [id])
+  workspaceId     String?
+  workspace       Workspace? @relation(fields: [workspaceId], references: [id])
+  taskId          String?
+  task            Task?      @relation(fields: [taskId], references: [id])
+  interviewId     String?    @unique
+  interview       Interview? @relation(fields: [interviewId], references: [id])
+  chatRoomId      String?
+  title           String
+  liveKitRoomId   String    @unique
+  scheduledAt     DateTime?
+  startedAt       DateTime  @default(now())
+  endedAt         DateTime?
+  isClientMeeting Boolean   @default(false)
+  createdById     String
+  createdAt       DateTime  @default(now())
 
   participants MeetingParticipant[]
   recordings   MeetingRecording[]
+  invitees     MeetingInvitee[]
 
   @@index([projectId])
   @@index([workspaceId])
   @@index([taskId])
+}
+
+model MeetingInvitee {
+  id        String  @id @default(cuid())
+  meetingId String
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id])
+
+  @@unique([meetingId, userId])
+  @@index([meetingId])
 }
 
 model MeetingRecording {
@@ -886,7 +904,6 @@ model Task {
   status      TaskStatus @default(TODO)
   projectId   String?
   workspaceId String?
-  dueDate     DateTime?
   completedAt DateTime?
   createdById String
   createdBy   User       @relation("TaskCreator", fields: [createdById], references: [id])

@@ -13,20 +13,23 @@ export function getSidebarItems(role: string): SidebarItem[] {
     { label: "Dashboard",  href: "/dashboard",  icon: "LayoutDashboard" },
     { label: "Projects",   href: "/projects",   icon: "FolderKanban" },
     { label: "Chat",       href: "/chat",        icon: "MessageSquare" },
-    { label: "Tasks",      href: "/tasks",       icon: "CheckSquare" },
-    { label: "Social Media", href: "/workspaces",  icon: "Layers" },
   ];
 
-  if (["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "HR"].includes(role)) {
+  if (role !== "CLIENT") {
+    base.push({ label: "Tasks",      href: "/tasks",       icon: "CheckSquare" });
+    base.push({ label: "Social Media", href: "/workspaces",  icon: "Layers" });
+  }
+
+  if (["ADMIN", "PROJECT_MANAGER", "HR"].includes(role)) {
     base.push({ label: "HR",       href: "/hr",        icon: "Briefcase" });
   }
-  if (["SUPER_ADMIN", "ADMIN", "ACCOUNTANT"].includes(role)) {
+  if (["ADMIN", "ACCOUNTANT"].includes(role)) {
     base.push({ label: "Finance",  href: "/accountant", icon: "Calculator" });
   }
-  if (!["SUPER_ADMIN", "CLIENT"].includes(role)) {
+  if (role !== "CLIENT") {
     base.push({ label: "Attendance", href: "/attendance", icon: "Clock" });
   }
-  if (["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(role)) {
+  if (["ADMIN", "PROJECT_MANAGER"].includes(role)) {
     base.push({ label: "Admin",    href: "/admin",      icon: "Shield" });
   }
 
@@ -34,14 +37,14 @@ export function getSidebarItems(role: string): SidebarItem[] {
 }
 
 /**
- * Admin area sub-nav. Manager has full admin parity — only SUPER_ADMIN is uniquely privileged.
+ * Admin area sub-nav. Manager has full admin parity.
  */
 export function getAdminSidebarItems(viewerRole: string): SidebarItem[] {
   const base: SidebarItem[] = [
     { label: "Back", href: "/dashboard", icon: "ArrowLeft", isBackButton: true },
     { label: "Users", href: "/admin/users", icon: "Users" },
   ];
-  if (["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(viewerRole)) {
+  if (["ADMIN", "PROJECT_MANAGER"].includes(viewerRole)) {
     base.push({ label: "Hiring Approvals", href: "/admin/hiring", icon: "Briefcase" });
   }
   return base;
@@ -60,9 +63,14 @@ export function getProjectSidebarItems(projectId: string, role: string): Sidebar
   items.push(
     { label: "Chat",              href: `/projects/${projectId}/chat`,         icon: "MessageSquare" },
     { label: "Questions",         href: `/projects/${projectId}/questions`,    icon: "MessageCircleQuestion", badgeKey: "questionsUnanswered" },
-    { label: "Documents",         href: `/projects/${projectId}/documents`,    icon: "FileText" },
+    { label: "Milestone Docs",     href: `/projects/${projectId}/documents`,    icon: "FileText" },
     { label: "Vault",             href: `/projects/${projectId}/vault`,        icon: "KeyRound" },
   );
+
+  if (role !== "CLIENT") {
+    items.push({ label: "Tasks", href: `/projects/${projectId}/tasks`, icon: "CheckSquare" });
+    items.push({ label: "Meetings", href: `/projects/${projectId}/meetings`, icon: "Video" });
+  }
 
   return items;
 }

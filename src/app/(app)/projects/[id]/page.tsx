@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import dynamic from "next/dynamic";
 import {
   CheckCircle2,
@@ -10,13 +11,10 @@ import {
   HelpCircle,
   MessageSquare,
   Pencil,
-  Users,
   Video,
-  VideoOff,
   X,
   PlayCircle,
 } from "lucide-react";
-import MeetingRecordingList from "@/components/meetings/MeetingRecordingList";
 import toast from "react-hot-toast";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import { usePresence } from "@/components/layout/PresenceProvider";
@@ -30,10 +28,6 @@ const StandaloneEditor = dynamic(
 
 const TOAST_STYLE = { background: "hsl(var(--b2))", color: "hsl(var(--bc))" };
 const TOAST_ERROR_STYLE = { background: "hsl(var(--b2))", color: "hsl(var(--er))" };
-
-type StartMeetingResponse = {
-  meetingId: string;
-};
 
 type MilestoneStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED" | "BLOCKED";
 
@@ -92,7 +86,6 @@ export default function ProjectDashboardPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<{ id: string; name: string; role: string } | null>(null);
-  const [startingMeeting, setStartingMeeting] = useState(false);
   const presenceMap = usePresence();
 
   // Edit team modal
@@ -103,7 +96,6 @@ export default function ProjectDashboardPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [editClientOpen, setEditClientOpen] = useState(false);
   const [editClientId, setEditClientId] = useState("");
-  const [recordingsOpen, setRecordingsOpen] = useState(false);
   const [savingClient, setSavingClient] = useState(false);
   const [editMilestonesOpen, setEditMilestonesOpen] = useState(false);
   const [draftMilestones, setDraftMilestones] = useState<Milestone[]>([]);
@@ -314,37 +306,6 @@ export default function ProjectDashboardPage() {
     setShowTaskModal(true);
   }
 
-  async function startMeeting() {
-    if (!project || !currentUser) return;
-    const meetingTab = window.open("about:blank", "_blank");
-    if (!meetingTab) {
-      toast.error("Please allow pop-ups to open meetings", { style: TOAST_ERROR_STYLE });
-      return;
-    }
-
-    setStartingMeeting(true);
-    try {
-      const res = await fetch("/api/meetings/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: `${project.title} — Meeting`, projectId: project.id }),
-      });
-      const data = (await res.json()) as {
-        data?: StartMeetingResponse;
-        error?: string;
-      };
-      if (!res.ok) throw new Error(data.error ?? "Failed to start meeting");
-      if (!data.data) throw new Error("Failed to start meeting");
-      meetingTab.location.href = `/meetings/${data.data.meetingId}`;
-      toast.success("Meeting started", { style: TOAST_STYLE });
-    } catch (e) {
-      meetingTab.close();
-      toast.error(e instanceof Error ? e.message : "Failed", { style: TOAST_ERROR_STYLE });
-    } finally {
-      setStartingMeeting(false);
-    }
-  }
-
   if (loading) {
     return (
       <div className="flex justify-center py-16">
@@ -362,7 +323,7 @@ export default function ProjectDashboardPage() {
   }
 
   const isClient = currentUser?.role === "CLIENT";
-  const isManager = !!currentUser && ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(currentUser.role);
+  const isManager = !!currentUser && ["ADMIN", "PROJECT_MANAGER"].includes(currentUser.role);
   const completedMilestones = project.milestones.filter((m) => m.status === "COMPLETED").length;
   const totalMilestones = project.milestones.length;
   const progress = totalMilestones > 0 ? Math.round((completedMilestones / totalMilestones) * 100) : 0;
@@ -407,18 +368,13 @@ export default function ProjectDashboardPage() {
         </div>
         <div className="flex items-center gap-3">
           {!isClient && (
-            <button
+            <Link
+              href={`/projects/${project.id}/meetings`}
               className="btn btn-primary btn-sm gap-2"
-              onClick={() => void startMeeting()}
-              disabled={startingMeeting}
             >
-              {startingMeeting ? (
-                <span className="loading loading-spinner loading-xs" />
-              ) : (
-                <Video className="w-4 h-4" />
-              )}
-              Start Meeting
-            </button>
+              <Video className="w-4 h-4" />
+              Meetings
+            </Link>
           )}
           {project.price != null && (
             <div className="text-right">
@@ -483,16 +439,16 @@ export default function ProjectDashboardPage() {
           </div>
         </button>
 
-        <button
+        <Link
+          href={`/projects/${project.id}/meetings`}
           className="card bg-base-200 hover:bg-base-300 transition-colors cursor-pointer text-left"
-          onClick={() => setRecordingsOpen(true)}
         >
           <div className="card-body p-4">
             <PlayCircle className="w-5 h-5 text-info mb-1" />
             <p className="text-xs text-base-content/50">Recordings</p>
             <p className="text-sm font-medium text-base-content">View clips</p>
           </div>
-        </button>
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -913,21 +869,6 @@ export default function ProjectDashboardPage() {
         <div className="modal-backdrop" onClick={() => setShowTaskModal(false)} />
       </dialog>
 
-      {/* Recordings Modal */}
-      {recordingsOpen && (
-        <div className="modal modal-open">
-          <div className="modal-box max-w-4xl bg-base-100">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="font-bold text-lg">Meeting Recordings</h3>
-              <button className="btn btn-ghost btn-sm btn-circle" onClick={() => setRecordingsOpen(false)}>
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <MeetingRecordingList projectId={project.id} />
-          </div>
-          <div className="modal-backdrop" onClick={() => setRecordingsOpen(false)} />
-        </div>
-      )}
     </>
   );
 }

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { X, Calendar, User, Layout, MessageSquare, CheckCircle2, Circle, Trash2, Plus, Clock } from "lucide-react";
 import toast from "react-hot-toast";
 import { AvatarStack } from "@/components/projects/AvatarStack";
+import { UserAvatar } from "@/components/ui/UserAvatar";
 import { usePresence } from "@/components/layout/PresenceProvider";
 import type { TaskCard, TaskStatus } from "./TaskKanban";
 
@@ -122,13 +123,13 @@ export function TaskDetailModal({ taskId, onClose, onUpdate }: TaskDetailModalPr
                 </div>
               </div>
               <div className="space-y-1.5">
-                <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 px-1">Due Date</p>
-                <button className="btn btn-sm btn-ghost bg-base-100/50 w-full justify-start gap-2 border border-base-300/50">
+                <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 px-1">Created</p>
+                <div className="btn btn-sm btn-ghost bg-base-100/50 w-full justify-start gap-2 border border-base-300/50 pointer-events-none">
                   <Calendar className="w-3.5 h-3.5 opacity-50" />
                   <span className="text-sm">
-                    {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : "No date"}
+                    {new Date(task.createdAt).toLocaleDateString()}
                   </span>
-                </button>
+                </div>
               </div>
             </div>
 
@@ -183,19 +184,12 @@ export function TaskDetailModal({ taskId, onClose, onUpdate }: TaskDetailModalPr
               <div className="space-y-2">
                 {task.assignees?.map((a: any) => (
                   <div key={a.user.id} className="flex items-center gap-2">
-                    <div className="relative">
-                      <div className="w-6 h-6 rounded-full bg-base-100 flex items-center justify-center text-[10px] font-bold overflow-hidden border border-base-300">
-                        {a.user.profilePicUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={a.user.profilePicUrl} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          a.user.name[0]
-                        )}
-                      </div>
-                      {presenceMap[a.user.id] === "online" && (
-                        <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-success rounded-full border border-base-100" />
-                      )}
-                    </div>
+                    <UserAvatar
+                      user={{ name: a.user.name, profilePicUrl: a.user.profilePicUrl }}
+                      size={24}
+                      showPresence
+                      isOnline={presenceMap[a.user.id] === "online"}
+                    />
                     <span className="text-xs font-medium truncate">{a.user.name}</span>
                   </div>
                 ))}

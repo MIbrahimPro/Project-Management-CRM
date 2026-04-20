@@ -4,7 +4,7 @@ import { apiHandler, forbidden } from "@/lib/api-handler";
 
 export const dynamic = "force-dynamic";
 
-const HR_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "HR"];
+const HR_ROLES = ["ADMIN", "PROJECT_MANAGER", "HR"];
 
 export const GET = apiHandler(async (req: NextRequest) => {
   const userRole = req.headers.get("x-user-role") ?? "";
@@ -72,7 +72,7 @@ export const GET = apiHandler(async (req: NextRequest) => {
     by: ['role'],
     where: {
       isActive: true,
-      role: { notIn: ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "CLIENT"] },
+      role: { notIn: ["ADMIN", "PROJECT_MANAGER", "CLIENT"] },
     },
     _count: { id: true },
   });

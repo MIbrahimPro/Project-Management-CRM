@@ -35,12 +35,6 @@ export function TaskCard({
         <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-black tracking-widest ${statusCls}`}>
           {task.status.replace("_", " ")}
         </span>
-        {task.dueDate && (
-          <span className="text-[10px] text-base-content/40 flex items-center gap-1.5 font-medium">
-            <Clock className="w-3 h-3" />
-            {new Date(task.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-          </span>
-        )}
       </div>
 
       <h3 className="text-[15px] font-bold text-base-content line-clamp-2 mb-2 leading-relaxed group-hover:text-primary transition-colors relative z-10">
@@ -57,10 +51,10 @@ export function TaskCard({
       )}
 
       <div className="mt-auto pt-4 border-t border-base-300/30 flex items-center justify-between gap-2 relative z-10">
-        <AvatarStack 
-          users={task.assignees?.map((a: any) => a.user) ?? []}
+        <AvatarStack
+          users={(task.assignees ?? []).slice(0, 3).map((a: any) => a.user)}
+          overflow={Math.max(0, (task.assignees?.length ?? 0) - 3)}
           presenceMap={presenceMap}
-          size="xs"
         />
         <div className="flex items-center gap-1 text-[10px] text-base-content/30 group-hover:text-primary/60 transition-colors">
           <span>Details</span>

@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export const USER_MANAGEMENT_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "HR"] as const;
+export const USER_MANAGEMENT_ROLES = ["ADMIN", "PROJECT_MANAGER", "HR"] as const;
 
 /**
- * Allows Super Admin, Admin, and Project Manager to access user-management APIs and `/admin/users`.
- * Manager and Admin have identical privileges; only SUPER_ADMIN is uniquely protected at the route level.
+ * Allows Admin and Project Manager to access user-management APIs and `/admin/users`.
  * Returns a 403 JSON response if unauthorized, otherwise `null`.
  */
 export function requireUserManagement(req: NextRequest): NextResponse | null {

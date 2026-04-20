@@ -25,7 +25,6 @@ const MESSAGE_INCLUDE = {
   },
   reactions: true,
   receipts: true,
-  deliveredAt: true,
 } as const;
 
 export type ChatMessagePayload = {
@@ -50,6 +49,7 @@ export async function createNormalChatMessage(params: ChatMessagePayload) {
       mediaUrl: params.mediaUrl ?? null,
       mediaType: params.mediaType ?? null,
       replyToId: params.replyToId ?? undefined,
+      deliveredAt: new Date(), // server received = delivered
     },
     include: MESSAGE_INCLUDE,
   });

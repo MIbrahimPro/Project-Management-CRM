@@ -91,15 +91,29 @@ export async function tryRefreshSession(req: NextRequest): Promise<{
   const cookies = parse(cookieHeader);
   if (!cookies.refresh_token) return null;
 
-  const refreshRes = await fetch(new URL("/api/auth/refresh", req.nextUrl.origin), {
-    method: "POST",
-    headers: {
-      cookie: cookieHeader,
-      "user-agent": req.headers.get("user-agent") ?? "",
-      "x-forwarded-for": req.headers.get("x-forwarded-for") ?? "",
-    },
-    cache: "no-store",
-  });
+  let refreshRes: Response;
+  try {
+    const refreshUrl = new URL("/api/auth/refresh", req.url);
+    // Node fetch may resolve localhost to ::1, but dev server often only binds 127.0.0.1.
+    if (refreshUrl.hostname === "localhost") {
+      refreshUrl.hostname = "127.0.0.1";
+    }
+    refreshRes = await fetch(refreshUrl.toString(), {
+      method: "POST",
+      headers: {
+        cookie: cookieHeader,
+        "user-agent": req.headers.get("user-agent") ?? "",
+        "x-forwarded-for": req.headers.get("x-forwarded-for") ?? "",
+      },
+      cache: "no-store",
+    });
+  } catch (err) {
+    // Don't throw from middleware — treat refresh failure as unauthenticated.
+    // Log for diagnostics; middleware consumers will handle null result.
+    // eslint-disable-next-line no-console
+    console.error("[middleware-refresh] fetch /api/auth/refresh failed:", err);
+    return null;
+  }
 
   if (!refreshRes.ok) return null;
 

@@ -10,7 +10,7 @@ const postSchema = z.object({
   userId: z.string().min(1),
 });
 
-const MANAGER_ROLES = new Set(["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"]);
+const MANAGER_ROLES = new Set(["ADMIN", "PROJECT_MANAGER"]);
 
 /**
  * Returns true if the actor may add or remove members (except self-leave rules handled separately).

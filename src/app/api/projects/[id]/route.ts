@@ -4,6 +4,7 @@ import { apiHandler, forbidden } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
 import { ensureProjectChatRooms } from "@/lib/project-chat";
+import { getSignedUrl } from "@/lib/supabase-storage";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,7 @@ const PatchSchema = z.object({
 });
 
 async function canAccess(userId: string, role: string, projectId: string): Promise<boolean> {
-  if (["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(role)) return true;
+  if (["ADMIN", "PROJECT_MANAGER"].includes(role)) return true;
 
   const project = await prisma.project.findUnique({
     where: { id: projectId },
@@ -95,24 +96,27 @@ export const GET = apiHandler(
 
     if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    // Generate signed URLs for members and client
-    const membersWithSignedUrls = await Promise.all(
-      project.members.map(async (m) => {
-        let avatarSignedUrl: string | null = null;
-        if (m.user.profilePicUrl) {
-          try {
-            avatarSignedUrl = await getSignedUrl(m.user.profilePicUrl, 3600);
-          } catch {}
-        }
-        return {
-          ...m,
-          user: {
-            ...m.user,
-            profilePicUrl: avatarSignedUrl || m.user.profilePicUrl,
-          },
-        };
-      })
-    );
+    // Generate signed URLs and filter out SUPER_ADMIN
+    const membersWithSignedUrls = (
+      await Promise.all(
+        project.members.map(async (m) => {
+          if (m.user.role === "SUPER_ADMIN") return null;
+          let avatarSignedUrl: string | null = null;
+          if (m.user.profilePicUrl) {
+            try {
+              avatarSignedUrl = await getSignedUrl(m.user.profilePicUrl, 3600);
+            } catch {}
+          }
+          return {
+            ...m,
+            user: {
+              ...m.user,
+              profilePicUrl: avatarSignedUrl || m.user.profilePicUrl,
+            },
+          };
+        })
+      )
+    ).filter((m): m is Exclude<typeof m, null> => m !== null);
 
     let clientWithSignedUrl = project.client;
     if (project.client?.profilePicUrl) {
@@ -139,7 +143,7 @@ export const PATCH = apiHandler(
   async (req: NextRequest, ctx?: { params: Record<string, string> }) => {
     const userId = req.headers.get("x-user-id") ?? forbidden();
     const role = req.headers.get("x-user-role") ?? "";
-    if (!["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER"].includes(role)) forbidden();
+    if (!["ADMIN", "PROJECT_MANAGER"].includes(role)) forbidden();
 
     const id = ctx?.params.id;
     if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
@@ -179,12 +183,38 @@ export const PATCH = apiHandler(
 
       // Sync team members if provided
       if (teamMemberIds !== undefined) {
+        // Find removed members before deletion (exclude admin/manager — they stay in tasks)
+        const existingMembers = await tx.projectMember.findMany({
+          where: { projectId: id },
+          select: { userId: true, user: { select: { role: true } } },
+        });
+        const newMemberSet = new Set(teamMemberIds);
+        const removedUserIds = existingMembers
+          .filter((m) => !newMemberSet.has(m.userId) && !["ADMIN", "PROJECT_MANAGER"].includes(m.user.role))
+          .map((m) => m.userId);
+
         await tx.projectMember.deleteMany({ where: { projectId: id } });
         if (teamMemberIds.length > 0) {
           await tx.projectMember.createMany({
             data: teamMemberIds.map((uid) => ({ projectId: id, userId: uid })),
             skipDuplicates: true,
           });
+        }
+
+        // Remove departed members from non-DONE/non-CANCELLED tasks in this project
+        if (removedUserIds.length > 0) {
+          const activeTasks = await tx.task.findMany({
+            where: { projectId: id, status: { notIn: ["DONE", "CANCELLED"] } },
+            select: { id: true },
+          });
+          if (activeTasks.length > 0) {
+            await tx.taskAssignee.deleteMany({
+              where: {
+                taskId: { in: activeTasks.map((t) => t.id) },
+                userId: { in: removedUserIds },
+              },
+            });
+          }
         }
       }
 

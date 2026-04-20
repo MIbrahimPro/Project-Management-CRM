@@ -16,7 +16,7 @@ function SectionTitle({ children }: { children: ReactNode }) {
  * Role-specific dashboard cards (projects, tasks, HR, finance, etc.).
  */
 export function RoleWidgets({ data, role }: RoleWidgetsProps) {
-  if (role === "SUPER_ADMIN" || role === "ADMIN" || role === "PROJECT_MANAGER") {
+  if (role === "ADMIN" || role === "PROJECT_MANAGER") {
     const projects = "projects" in data ? (data.projects ?? []) : [];
     const requests =
       "pendingClientRequests" in data ? (data.pendingClientRequests ?? []) : [];
@@ -96,10 +96,7 @@ export function RoleWidgets({ data, role }: RoleWidgetsProps) {
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-base-content">{t.title}</p>
                     <p className="text-xs text-base-content/50">
-                      {t.project?.title ?? "Social media"} · Due{" "}
-                      {t.dueDate
-                        ? new Date(t.dueDate).toLocaleDateString()
-                        : "—"}
+                      {t.project?.title ?? "Social media"} · {t.status.replace("_", " ")}
                     </p>
                   </div>
                   <span className="badge badge-outline border-base-300 shrink-0">
