@@ -6,9 +6,9 @@ import { callAI } from "@/lib/ai";
 export const dynamic = "force-dynamic";
 
 const bodySchema = z.object({
-  prompt: z.string().min(1).max(2000),
-  context: z.string().max(10000).optional(),
-  type: z.enum(["draft", "improve", "summarize", "expand"]).default("draft"),
+  prompt: z.string().min(1).max(32000), // 32K chars for full document support
+  context: z.string().max(64000).optional(),
+  type: z.enum(["draft", "improve", "summarize", "expand", "format"]).default("draft"),
 });
 
 // POST /api/ai/document — AI-assisted document writing
@@ -23,6 +23,7 @@ export const POST = apiHandler(async (req: NextRequest) => {
     improve: "You are an editor. Improve the given document content for clarity, grammar, and professionalism. Return the improved version only.",
     summarize: "Summarize the given document content concisely. Capture the key points in bullet format.",
     expand: "Expand the given content with more detail, examples, and explanation. Keep the same tone and style.",
+    format: "You are a document formatter. Take the input text and transform it into a well-structured document with proper hierarchy: use H1 for main title, H2 for major sections, H3 for subsections, and bullet points for lists. Preserve all content but reorganize it logically. Output in markdown format.",
   };
 
   const messages = body.context

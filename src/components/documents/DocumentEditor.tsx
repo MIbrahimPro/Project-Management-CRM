@@ -18,6 +18,7 @@ import "@/styles/blocknote-overrides.css";
 import { useTheme } from "@/components/providers/ThemeProvider";
 
 const LIGHT_THEMES = ["neutral-light", "light", "corporate", "pale"];
+const MAX_AI_CHARS = 16000; // Groq models support 128K tokens (~96K chars), we use 16K for safety
 
 /** Hash a string to a deterministic hue (0-360). */
 function hashToColor(str: string): string {
@@ -48,7 +49,7 @@ export default function DocumentEditor({
 }: DocumentEditorProps) {
   const [synced, setSynced] = useState(false);
   const [selectedText, setSelectedText] = useState("");
-  const [selectionBusy, setSelectionBusy] = useState<null | "summarize" | "professionalize">(null);
+  const [selectionBusy, setSelectionBusy] = useState<null | "summarize" | "professionalize" | "format">(null);
   const [aiPromptOpen, setAiPromptOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
@@ -105,39 +106,70 @@ export default function DocumentEditor({
   }, []);
 
   const applySelectionResult = useCallback(
-    (text: string) => {
+    async (text: string) => {
       if (!text.trim()) return;
-      // insertInlineContent replaces active selection when one exists.
-      editor.insertInlineContent(text);
+      // For format/professionalize/summarize, parse markdown to blocks for proper formatting
+      // For plain text, use insertInlineContent
+      const blocks = await editor.tryParseMarkdownToBlocks(text);
+      if (blocks.length > 0) {
+        editor.insertBlocks(blocks, editor.getTextCursorPosition().block, "after");
+      } else {
+        editor.insertInlineContent(text);
+      }
     },
     [editor]
   );
 
   const runSelectionAiAction = useCallback(
-    async (type: "summarize" | "professionalize") => {
+    async (type: "summarize" | "professionalize" | "format") => {
       const source = selectedText.trim();
       if (!source || readOnly) return;
       setSelectionBusy(type);
       try {
-        const instruction =
-          type === "summarize"
-            ? "Summarize this text while preserving key facts and intent."
-            : "Professionalize this text for a client-facing software agency document.";
+        let instruction: string;
+        let apiType: string;
+        
+        switch (type) {
+          case "summarize":
+            instruction = "Summarize this text while preserving key facts and intent.";
+            apiType = "summarize";
+            break;
+          case "format":
+            instruction = "Format and structure this text with proper headings and organization:";
+            apiType = "format";
+            break;
+          case "professionalize":
+          default:
+            instruction = "Professionalize this text for a client-facing software agency document.";
+            apiType = "improve";
+        }
+        
+        // Use full text up to MAX_AI_CHARS (16K is plenty for Groq models)
+        const maxSourceLen = MAX_AI_CHARS - 500; // Leave room for instruction
+        const truncatedSource = source.length > maxSourceLen ? source.slice(0, maxSourceLen) + "..." : source;
+        
         const res = await fetch("/api/ai/document", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            type: type === "summarize" ? "summarize" : "improve",
-            prompt: `${instruction}\n\nSelected text:\n${source}`,
-            context: `Current document context:\n${getEditorPlainText().slice(0, 7000)}`,
+            type: apiType,
+            prompt: `${instruction}\n\nSelected text:\n${truncatedSource}`,
+            context: `Current document context:\n${getEditorPlainText().slice(0, 12000)}`,
           }),
         });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: "Unknown error" }));
+          throw new Error(err.error || `Request failed: ${res.status}`);
+        }
         const data = (await res.json()) as { data?: { content?: string } };
         const output = data.data?.content?.trim() ?? "";
         if (output) {
-          applySelectionResult(output);
+          await applySelectionResult(output);
           setSelectedText("");
         }
+      } catch (e) {
+        console.error("AI action failed:", e);
+        // Show error in UI - could add a toast here
       } finally {
         setSelectionBusy(null);
       }
@@ -243,6 +275,7 @@ export default function DocumentEditor({
       const aiItem: DefaultReactSuggestionItem = {
         title: "AI: Write with prompt",
         subtext: "Generate and insert content using AI",
+        icon: <Sparkles className="w-4 h-4" />,
         onItemClick: () => {
           setAiPromptOpen(true);
         },
@@ -264,29 +297,54 @@ export default function DocumentEditor({
 
   return (
     <div className="bn-editor-wrapper h-full relative flex flex-col" ref={wrapperRef}>
-      {/* Always-visible AI actions bar */}
+      {/* AI actions bar - only show selection tools when text is selected */}
       {!readOnly && (
         <div className="flex items-center gap-1 px-3 py-1.5 bg-base-200/70 border-b border-base-300 flex-shrink-0">
           <span className="text-[10px] font-semibold text-base-content/40 uppercase tracking-wide mr-1">AI</span>
-          <button
-            className="btn btn-ghost btn-xs gap-1 text-primary"
-            onClick={() => void runSelectionAiAction("summarize")}
-            disabled={selectionBusy !== null || !selectedText}
-            title={selectedText ? "Summarize selected text" : "Select text first"}
-          >
-            {selectionBusy === "summarize" ? <span className="loading loading-spinner loading-xs" /> : <Sparkles className="w-3 h-3" />}
-            Summarize
-          </button>
-          <button
-            className="btn btn-ghost btn-xs gap-1 text-secondary"
-            onClick={() => void runSelectionAiAction("professionalize")}
-            disabled={selectionBusy !== null || !selectedText}
-            title={selectedText ? "Professionalize selected text" : "Select text first"}
-          >
-            {selectionBusy === "professionalize" ? <span className="loading loading-spinner loading-xs" /> : <Sparkles className="w-3 h-3" />}
-            Fix
-          </button>
-          <div className="w-px h-4 bg-base-300 mx-1" />
+          {selectedText && (
+            <>
+              <button
+                className="btn btn-ghost btn-xs gap-1 text-primary disabled:text-base-content/30"
+                onClick={() => void runSelectionAiAction("summarize")}
+                disabled={selectionBusy !== null || selectedText.length > MAX_AI_CHARS}
+                title={
+                  selectedText.length > MAX_AI_CHARS
+                    ? `Selection too long (${selectedText.length}/${MAX_AI_CHARS} chars). Select less text.`
+                    : "Summarize selected text"
+                }
+              >
+                {selectionBusy === "summarize" ? <span className="loading loading-spinner loading-xs" /> : <Sparkles className="w-3 h-3" />}
+                Summarize
+              </button>
+              <button
+                className="btn btn-ghost btn-xs gap-1 text-secondary disabled:text-base-content/30"
+                onClick={() => void runSelectionAiAction("professionalize")}
+                disabled={selectionBusy !== null || selectedText.length > MAX_AI_CHARS}
+                title={
+                  selectedText.length > MAX_AI_CHARS
+                    ? `Selection too long (${selectedText.length}/${MAX_AI_CHARS} chars). Select less text.`
+                    : "Professionalize selected text"
+                }
+              >
+                {selectionBusy === "professionalize" ? <span className="loading loading-spinner loading-xs" /> : <Sparkles className="w-3 h-3" />}
+                Professionalize
+              </button>
+              <button
+                className="btn btn-ghost btn-xs gap-1 text-accent disabled:text-base-content/30"
+                onClick={() => void runSelectionAiAction("format")}
+                disabled={selectionBusy !== null || selectedText.length > MAX_AI_CHARS}
+                title={
+                  selectedText.length > MAX_AI_CHARS
+                    ? `Selection too long (${selectedText.length}/${MAX_AI_CHARS} chars). Select less text.`
+                    : "Format with headings and structure"
+                }
+              >
+                {selectionBusy === "format" ? <span className="loading loading-spinner loading-xs" /> : <Sparkles className="w-3 h-3" />}
+                Format
+              </button>
+              <div className="w-px h-4 bg-base-300 mx-1" />
+            </>
+          )}
           <button
             className="btn btn-ghost btn-xs gap-1 text-base-content/60"
             onClick={() => setAiPromptOpen(true)}
@@ -296,7 +354,9 @@ export default function DocumentEditor({
             Write…
           </button>
           {selectedText && (
-            <span className="text-[10px] text-base-content/30 ml-1 truncate max-w-[160px]">&ldquo;{selectedText.slice(0, 40)}{selectedText.length > 40 ? "…" : ""}&rdquo; selected</span>
+            <span className={`text-[10px] ml-1 truncate max-w-[160px] ${selectedText.length > MAX_AI_CHARS ? "text-error" : "text-base-content/30"}`}>
+              &ldquo;{selectedText.slice(0, 40)}{selectedText.length > 40 ? "…" : ""}&rdquo; ({selectedText.length}/{MAX_AI_CHARS})
+            </span>
           )}
         </div>
       )}
@@ -318,7 +378,7 @@ export default function DocumentEditor({
                   className="bn-button hover:bg-base-300 transition-colors"
                   onClick={() => void runSelectionAiAction("summarize")}
                   title="AI Summarize"
-                  disabled={selectionBusy !== null}
+                  disabled={selectionBusy !== null || !selectedText}
                 >
                   <Sparkles className="w-3.5 h-3.5 text-primary" />
                   <span className="text-[10px] ml-1">Summarize</span>
@@ -327,10 +387,19 @@ export default function DocumentEditor({
                   className="bn-button hover:bg-base-300 transition-colors"
                   onClick={() => void runSelectionAiAction("professionalize")}
                   title="AI Professionalize"
-                  disabled={selectionBusy !== null}
+                  disabled={selectionBusy !== null || !selectedText}
                 >
                   <Sparkles className="w-3.5 h-3.5 text-secondary" />
-                  <span className="text-[10px] ml-1">Fix</span>
+                  <span className="text-[10px] ml-1">Professionalize</span>
+                </button>
+                <button
+                  className="bn-button hover:bg-base-300 transition-colors"
+                  onClick={() => void runSelectionAiAction("format")}
+                  title="AI Format"
+                  disabled={selectionBusy !== null || !selectedText}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-accent" />
+                  <span className="text-[10px] ml-1">Format</span>
                 </button>
               </div>
             </FormattingToolbar>

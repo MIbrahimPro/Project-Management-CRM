@@ -18,6 +18,7 @@ import { Sparkles } from "lucide-react";
 import type { Block } from "@blocknote/core";
 
 const LIGHT_THEMES = ["neutral-light", "light", "corporate", "pale"];
+const MAX_AI_CHARS = 16000; // Groq models support 128K tokens
 
 interface StandaloneEditorProps {
   initialContent?: string;
@@ -55,7 +56,7 @@ const StandaloneEditor = forwardRef<StandaloneEditorHandle, StandaloneEditorProp
     const bnTheme = LIGHT_THEMES.includes(theme) ? "light" : "dark";
 
     const [selectedText, setSelectedText] = useState("");
-    const [selectionBusy, setSelectionBusy] = useState<null | "fix">(null);
+    const [selectionBusy, setSelectionBusy] = useState<null | "professionalize">(null);
     const [aiPromptOpen, setAiPromptOpen] = useState(false);
     const [aiPrompt, setAiPrompt] = useState("");
     const [aiBusy, setAiBusy] = useState(false);
@@ -117,20 +118,37 @@ const StandaloneEditor = forwardRef<StandaloneEditorHandle, StandaloneEditorProp
     const runFixSelection = useCallback(async () => {
       const source = selectedText.trim();
       if (!source || readOnly) return;
-      setSelectionBusy("fix");
+      setSelectionBusy("professionalize");
       try {
+        // Use full text up to MAX_AI_CHARS (16K is plenty for Groq models)
+        const maxSourceLen = MAX_AI_CHARS - 500; // Leave room for instruction
+        const truncatedSource = source.length > maxSourceLen ? source.slice(0, maxSourceLen) + "..." : source;
         const res = await fetch("/api/ai/document", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             type: "improve",
-            prompt: `Professionalize this text for a workplace document:\n\n${source}`,
-            context: `Document context:\n${getEditorPlainText().slice(0, 5000)}`,
+            prompt: `Professionalize this text for a workplace document:\n\n${truncatedSource}`,
+            context: `Document context:\n${getEditorPlainText().slice(0, 8000)}`,
           }),
         });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: "Unknown error" }));
+          throw new Error(err.error || `Request failed: ${res.status}`);
+        }
         const data = (await res.json()) as { data?: { content?: string } };
         const output = data.data?.content?.trim() ?? "";
-        if (output) editor.insertInlineContent(output);
+        if (output) {
+          // Parse markdown to blocks for proper formatting
+          const blocks = await editor.tryParseMarkdownToBlocks(output);
+          if (blocks.length > 0) {
+            editor.insertBlocks(blocks, editor.getTextCursorPosition().block, "after");
+          } else {
+            editor.insertInlineContent(output);
+          }
+        }
+      } catch (e) {
+        console.error("AI professionalize failed:", e);
       } finally {
         setSelectionBusy(null);
       }
@@ -182,6 +200,7 @@ const StandaloneEditor = forwardRef<StandaloneEditorHandle, StandaloneEditorProp
         const aiItem: DefaultReactSuggestionItem = {
           title: "AI: Write with prompt",
           subtext: "Generate and insert content using AI",
+          icon: <Sparkles className="w-4 h-4" />,
           onItemClick: () => setAiPromptOpen(true),
           aliases: ["ai", "generate", "write"],
           group: "AI",
@@ -193,20 +212,31 @@ const StandaloneEditor = forwardRef<StandaloneEditorHandle, StandaloneEditorProp
 
     return (
       <div className="bn-editor-wrapper flex flex-col" ref={wrapperRef}>
-        {/* AI toolbar strip */}
+        {/* AI toolbar strip - only show Professionalize when text is selected */}
         {!readOnly && (
           <div className="flex items-center gap-1 px-2 py-1 bg-base-200/60 border-b border-base-300 flex-shrink-0">
             <span className="text-[10px] font-semibold text-base-content/40 uppercase tracking-wide mr-1">AI</span>
-            <button
-              className="btn btn-ghost btn-xs gap-1 text-secondary"
-              onClick={() => void runFixSelection()}
-              disabled={selectionBusy !== null || !selectedText}
-              title={selectedText ? "Fix / professionalize selected text" : "Select text first"}
-            >
-              {selectionBusy === "fix" ? <span className="loading loading-spinner loading-xs" /> : <Sparkles className="w-3 h-3" />}
-              Fix Selection
-            </button>
-            <div className="w-px h-3 bg-base-300 mx-0.5" />
+            {selectedText && (
+              <>
+                <button
+                  className="btn btn-ghost btn-xs gap-1 text-secondary disabled:text-base-content/30"
+                  onClick={() => void runFixSelection()}
+                  disabled={selectionBusy !== null || selectedText.length > MAX_AI_CHARS}
+                  title={
+                    selectedText.length > MAX_AI_CHARS
+                      ? `Selection too long (${selectedText.length}/${MAX_AI_CHARS} chars). Select less text.`
+                      : "Professionalize selected text"
+                  }
+                >
+                  {selectionBusy === "professionalize" ? <span className="loading loading-spinner loading-xs" /> : <Sparkles className="w-3 h-3" />}
+                  Professionalize
+                </button>
+                <span className={`text-[10px] ml-1 truncate max-w-[120px] ${selectedText.length > MAX_AI_CHARS ? "text-error" : "text-base-content/30"}`}>
+                  ({selectedText.length}/{MAX_AI_CHARS})
+                </span>
+                <div className="w-px h-3 bg-base-300 mx-0.5" />
+              </>
+            )}
             <button
               className="btn btn-ghost btn-xs gap-1 text-primary"
               onClick={() => setAiPromptOpen(true)}
@@ -234,11 +264,11 @@ const StandaloneEditor = forwardRef<StandaloneEditorHandle, StandaloneEditorProp
                   <button
                     className="bn-button hover:bg-base-300 transition-colors"
                     onClick={() => void runFixSelection()}
-                    title="AI Fix"
-                    disabled={selectionBusy !== null}
+                    title="AI Professionalize"
+                    disabled={selectionBusy !== null || !selectedText}
                   >
                     <Sparkles className="w-3.5 h-3.5 text-secondary" />
-                    <span className="text-[10px] ml-1">Fix</span>
+                    <span className="text-[10px] ml-1">Professionalize</span>
                   </button>
                 </div>
               </FormattingToolbar>

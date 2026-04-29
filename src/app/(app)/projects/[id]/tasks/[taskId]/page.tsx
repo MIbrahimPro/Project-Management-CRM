@@ -4,10 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2, Circle, Clock, Loader2, MessageSquare, PlayCircle, Save, User, Video, X } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Circle, Clock, Loader2, MessageSquare, PlayCircle, Plus, Save, Trash2, User, Video, X, Users } from "lucide-react";
 import toast from "react-hot-toast";
 import MeetingRecordingList from "@/components/meetings/MeetingRecordingList";
 import type { StandaloneEditorHandle } from "@/components/documents/StandaloneEditor";
+
+const MANAGER_ROLES = ["ADMIN", "PROJECT_MANAGER", "SUPER_ADMIN"];
 
 const StandaloneEditor = dynamic(() => import("@/components/documents/StandaloneEditor"), { ssr: false });
 
@@ -42,8 +44,12 @@ type TaskDetail = {
   createdAt: string;
   project: { id: string; title: string } | null;
   createdBy: { id: string; name: string } | null;
-  assignees: { user: { id: string; name: string; profilePicUrl: string | null } }[];
+  assignees: { user: { id: string; name: string; profilePicUrl: string | null; role: string } }[];
 };
+
+type CurrentUser = { id: string; name: string; role: string };
+
+type ProjectMember = { userId: string; user: { id: string; name: string; profilePicUrl: string | null; role: string } };
 
 export default function ProjectTaskDetailPage() {
   const params = useParams<{ id: string; taskId: string }>();
@@ -53,6 +59,7 @@ export default function ProjectTaskDetailPage() {
 
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
 
   // Edit state
   const [status, setStatus] = useState<TaskStatus>("TODO");
@@ -60,6 +67,11 @@ export default function ProjectTaskDetailPage() {
   const [savingDesc, setSavingDesc] = useState(false);
   const [startingMeeting, setStartingMeeting] = useState(false);
   const [recordingsOpen, setRecordingsOpen] = useState(false);
+
+  // Assignee management state
+  const [assigneeModalOpen, setAssigneeModalOpen] = useState(false);
+  const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
+  const [savingAssignees, setSavingAssignees] = useState(false);
 
   const descRef = useRef<StandaloneEditorHandle>(null);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -73,25 +85,83 @@ export default function ProjectTaskDetailPage() {
   async function loadTask() {
     setLoading(true);
     try {
-      const res = await fetch(`/api/tasks/${taskId}`);
-      if (!res.ok) {
+      const [taskRes, userRes] = await Promise.all([
+        fetch(`/api/tasks/${taskId}`),
+        fetch("/api/auth/me"),
+      ]);
+      
+      if (!taskRes.ok) {
         toast.error("Task not found", { style: TOAST_ERROR_STYLE });
         router.push(`/projects/${projectId}/tasks`);
         return;
       }
-      const json = (await res.json()) as { data?: TaskDetail };
-      if (!json.data) {
+      
+      const taskJson = (await taskRes.json()) as { data?: TaskDetail };
+      const userJson = (await userRes.json()) as { data?: CurrentUser };
+      
+      if (!taskJson.data) {
         router.push(`/projects/${projectId}/tasks`);
         return;
       }
-      setTask(json.data);
-      setStatus(json.data.status);
-      savedDescRef.current = json.data.description ?? null;
+      
+      setTask(taskJson.data);
+      setStatus(taskJson.data.status);
+      setCurrentUser(userJson.data ?? null);
+      savedDescRef.current = taskJson.data.description ?? null;
     } catch {
       toast.error("Failed to load task", { style: TOAST_ERROR_STYLE });
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadProjectMembers() {
+    try {
+      const res = await fetch(`/api/projects/${projectId}/members`);
+      if (!res.ok) throw new Error("Failed to load members");
+      const json = (await res.json()) as { data: ProjectMember[] };
+      setProjectMembers(json.data ?? []);
+    } catch {
+      toast.error("Failed to load project members", { style: TOAST_ERROR_STYLE });
+    }
+  }
+
+  function openAssigneeModal() {
+    void loadProjectMembers();
+    setAssigneeModalOpen(true);
+  }
+
+  async function saveAssignees(newAssigneeIds: string[]) {
+    if (!task) return;
+    setSavingAssignees(true);
+    try {
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assigneeIds: newAssigneeIds }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      const json = (await res.json()) as { data: TaskDetail };
+      setTask(json.data);
+      toast.success("Assignees updated", { style: TOAST_STYLE });
+      setAssigneeModalOpen(false);
+    } catch {
+      toast.error("Failed to update assignees", { style: TOAST_ERROR_STYLE });
+    } finally {
+      setSavingAssignees(false);
+    }
+  }
+
+  function toggleAssignee(userId: string, currentIds: string[]) {
+    if (currentIds.includes(userId)) {
+      // Don't allow removing the last assignee
+      if (currentIds.length <= 1) {
+        toast.error("Task must have at least one assignee", { style: TOAST_ERROR_STYLE });
+        return currentIds;
+      }
+      return currentIds.filter((id) => id !== userId);
+    }
+    return [...currentIds, userId];
   }
 
   async function saveStatus(newStatus: TaskStatus) {
@@ -279,9 +349,21 @@ export default function ProjectTaskDetailPage() {
       </div>
 
       {/* Assignees */}
-      {task.assignees.length > 0 && (
-        <div className="bg-base-200 rounded-xl p-3 space-y-2">
+      <div className="bg-base-200 rounded-xl p-3 space-y-2">
+        <div className="flex items-center justify-between">
           <p className="text-xs text-base-content/40 uppercase tracking-wide">Assignees</p>
+          {currentUser && MANAGER_ROLES.includes(currentUser.role) && task.status !== "DONE" && (
+            <button
+              className="btn btn-ghost btn-xs gap-1"
+              onClick={openAssigneeModal}
+              disabled={savingAssignees}
+            >
+              <Users className="w-3 h-3" />
+              Manage
+            </button>
+          )}
+        </div>
+        {task.assignees.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             {task.assignees.map((a) => (
               <div
@@ -295,8 +377,10 @@ export default function ProjectTaskDetailPage() {
               </div>
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <p className="text-sm text-base-content/40">No assignees</p>
+        )}
+      </div>
 
       {/* Description */}
       <div className="space-y-2">
@@ -332,6 +416,93 @@ export default function ProjectTaskDetailPage() {
             <MeetingRecordingList taskId={taskId} />
           </div>
           <div className="modal-backdrop" onClick={() => setRecordingsOpen(false)} />
+        </div>
+      )}
+
+      {/* Assignee Management Modal */}
+      {assigneeModalOpen && task && (
+        <div className="modal modal-open">
+          <div className="modal-box bg-base-200 max-w-md">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-lg text-base-content">Manage Assignees</h3>
+              <button
+                className="btn btn-ghost btn-sm btn-circle"
+                onClick={() => setAssigneeModalOpen(false)}
+                disabled={savingAssignees}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {projectMembers.length === 0 ? (
+                <div className="text-center py-4 text-base-content/40">
+                  <span className="loading loading-spinner loading-sm" />
+                  <p className="text-sm mt-2">Loading members...</p>
+                </div>
+              ) : (
+                projectMembers.map((member) => {
+                  const isAssigned = task.assignees.some((a) => a.user.id === member.userId);
+                  const isManager = MANAGER_ROLES.includes(member.user.role);
+                  const currentIds = task.assignees.map((a) => a.user.id);
+                  // Protected: managers cannot be removed
+                  const isProtected = isManager && isAssigned;
+                  
+                  return (
+                    <div
+                      key={member.userId}
+                      className={`flex items-center justify-between p-2 rounded-lg ${
+                        isAssigned ? "bg-primary/10" : "bg-base-100"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-sm font-medium text-primary">
+                          {member.user.name[0]}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-base-content">{member.user.name}</p>
+                          <p className="text-xs text-base-content/50">{member.user.role.replace(/_/g, " ")}</p>
+                        </div>
+                      </div>
+                      <button
+                        className={`btn btn-sm ${isAssigned ? "btn-error btn-outline" : "btn-primary"}`}
+                        onClick={() => {
+                          if (isProtected) {
+                            toast.error("Manager assignees cannot be removed", { style: TOAST_ERROR_STYLE });
+                            return;
+                          }
+                          const newIds = toggleAssignee(member.userId, currentIds);
+                          void saveAssignees(newIds);
+                        }}
+                        disabled={savingAssignees || isProtected}
+                      >
+                        {isAssigned ? (
+                          <>
+                            <Trash2 className="w-3 h-3" />
+                            {isProtected ? "Protected" : "Remove"}
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="w-3 h-3" />
+                            Add
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            <div className="modal-action">
+              <button
+                className="btn btn-ghost"
+                onClick={() => setAssigneeModalOpen(false)}
+                disabled={savingAssignees}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+          <div className="modal-backdrop" onClick={() => !savingAssignees && setAssigneeModalOpen(false)} />
         </div>
       )}
     </>

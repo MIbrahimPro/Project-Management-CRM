@@ -35,6 +35,10 @@ const STATUS_CONFIG: Record<string, { icon: React.ReactNode; label: string; badg
   CANCELLED: { icon: <X className="w-4 h-4 text-error" />, label: "Cancelled", badge: "badge-error" },
 };
 
+type CurrentUser = { id: string; name: string; role: string };
+
+const MANAGER_ROLES = ["ADMIN", "PROJECT_MANAGER", "SUPER_ADMIN"];
+
 export default function ProjectTasksPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -45,25 +49,47 @@ export default function ProjectTasksPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [creating, setCreating] = useState(false);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
 
   useEffect(() => {
     if (!projectId) return;
-    void loadTasks();
+    void loadUserAndTasks();
   }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function loadTasks() {
+  async function loadUserAndTasks() {
     setLoading(true);
     try {
-      const res = await fetch(`/api/projects/${projectId}/tasks`);
-      if (!res.ok) throw new Error("Failed");
-      const json = (await res.json()) as { data: Task[] };
-      setTasks(json.data ?? []);
+      const [userRes, tasksRes] = await Promise.all([
+        fetch("/api/auth/me"),
+        fetch(`/api/projects/${projectId}/tasks`),
+      ]);
+      
+      const userJson = (await userRes.json()) as { data?: CurrentUser };
+      const tasksJson = (await tasksRes.json()) as { data: Task[] };
+      
+      const user = userJson.data ?? null;
+      setCurrentUser(user);
+      
+      let allTasks = tasksJson.data ?? [];
+      
+      // Non-managers only see tasks they're assigned to or created
+      const isManager = user ? MANAGER_ROLES.includes(user.role) : false;
+      if (!isManager && user) {
+        allTasks = allTasks.filter(
+          (t) =>
+            t.createdBy.id === user.id ||
+            t.assignees.some((a) => a.userId === user.id)
+        );
+      }
+      
+      setTasks(allTasks);
     } catch {
       toast.error("Failed to load tasks", { style: TOAST_ERROR_STYLE });
     } finally {
       setLoading(false);
     }
   }
+
 
   async function createTask() {
     if (!newTitle.trim()) return;
@@ -79,7 +105,14 @@ export default function ProjectTasksPage() {
         throw new Error(err.error ?? "Failed");
       }
       const json = (await res.json()) as { data: Task };
-      setTasks((prev) => [json.data, ...prev]);
+      // Only add to list if user can see it (they're creator or assignee, or they're a manager)
+      const isManager = currentUser ? MANAGER_ROLES.includes(currentUser.role) : false;
+      const canSee = isManager || 
+        json.data.createdBy.id === currentUser?.id || 
+        json.data.assignees.some((a) => a.userId === currentUser?.id);
+      if (canSee) {
+        setTasks((prev) => [json.data, ...prev]);
+      }
       setNewTitle("");
       setShowCreate(false);
       toast.success("Task created", { style: TOAST_STYLE });
@@ -227,7 +260,7 @@ export default function ProjectTasksPage() {
       )}
 
       {/* Empty state */}
-      {tasks.length === 0 && (
+      {tasks.length === 0 && !loading && (
         <div className="text-center py-16 text-base-content/40">
           <div className="text-5xl mb-3">📋</div>
           <p className="text-lg">No tasks yet</p>
