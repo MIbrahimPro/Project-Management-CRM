@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { apiHandler } from "@/lib/api-handler";
+import { prisma } from "@/lib/db/prisma";
+import { apiHandler } from "@/lib/api/api-handler";
 
 export const dynamic = "force-dynamic";
 

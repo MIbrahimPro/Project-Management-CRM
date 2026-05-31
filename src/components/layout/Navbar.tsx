@@ -66,7 +66,7 @@ function NotificationBell() {
   const [notifications, setNotifications] = useState<NotifItem[]>([]);
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { socket, connected } = useSocket("/notifications");
+  const { socket, connected } = useSocket("/chat");
 
   useEffect(() => {
     let cancelled = false;
@@ -87,11 +87,7 @@ function NotificationBell() {
     const onNew = (n: NotifItem) => {
       setHasUnread(true);
       setNotifications((prev) => [n, ...prev].slice(0, 10));
-      toast(n.title, {
-        icon: "🔔",
-        style: { background: "hsl(var(--b2))", color: "hsl(var(--bc))" },
-        duration: 4500,
-      });
+      // Sound + detailed toast is handled by ClientLayout.tsx
     };
     const onUnread = (has: boolean) => setHasUnread(has);
     socket.on("new_notification", onNew);

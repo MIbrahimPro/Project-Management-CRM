@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { apiHandler } from "@/lib/api-handler";
-import { prisma } from "@/lib/prisma";
-import { logAction } from "@/lib/audit";
+import { apiHandler } from "@/lib/api/api-handler";
+import { prisma } from "@/lib/db/prisma";
+import { logAction } from "@/lib/db/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -24,9 +24,9 @@ export const POST = apiHandler(async (req: NextRequest) => {
   const existing = await prisma.checkIn.findUnique({
     where: { userId_date: { userId, date: today } },
   });
-  // Block re-check-in only while currently active (not checked out yet)
+  // If already checked in and not checked out, return existing record (idempotent)
   if (existing && !existing.checkedOutAt) {
-    return NextResponse.json({ error: "Already checked in today", code: "CONFLICT" }, { status: 409 });
+    return NextResponse.json({ data: { id: existing.id, checkedInAt: existing.checkedInAt } });
   }
 
   const now = new Date();

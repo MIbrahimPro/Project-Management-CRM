@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { apiHandler } from "@/lib/api-handler";
-import { prisma } from "@/lib/prisma";
+import { apiHandler } from "@/lib/api/api-handler";
+import { prisma } from "@/lib/db/prisma";
 import bcrypt from "bcryptjs";
-import { generateAccessToken, generateRefreshToken, hashToken, generateDeviceId, parseUserAgentFamily } from "@/lib/tokens";
-import { setAuthCookies } from "@/lib/auth-helpers";
-import { logAction } from "@/lib/audit";
+import { generateAccessToken, generateRefreshToken, hashToken, generateDeviceId, parseUserAgentFamily } from "@/lib/auth/tokens";
+import { setAuthCookies } from "@/lib/auth/auth-helpers";
+import { logAction } from "@/lib/db/audit";
 
 export const dynamic = "force-dynamic";
 

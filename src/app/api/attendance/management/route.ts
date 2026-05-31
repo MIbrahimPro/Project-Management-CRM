@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { apiHandler, forbidden } from "@/lib/api-handler";
+import { prisma } from "@/lib/db/prisma";
+import { apiHandler, forbidden } from "@/lib/api/api-handler";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +42,7 @@ export const GET = apiHandler(async (req: NextRequest) => {
   });
 
   // Fetch avatar signed URLs
-  const { getSignedUrl } = await import("@/lib/supabase-storage");
+  const { getSignedUrl } = await import("@/lib/storage/supabase-storage");
   const data = await Promise.all(employees.map(async (e) => {
     let avatarSignedUrl = null;
     if (e.profilePicUrl) {

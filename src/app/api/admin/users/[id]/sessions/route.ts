@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
-import { logAction } from "@/lib/audit";
-import { requireUserManagement } from "@/lib/admin-user-management";
+import { prisma } from "@/lib/db/prisma";
+import { logAction } from "@/lib/db/audit";
+import { requireUserManagement } from "@/lib/auth/admin-user-management";
 
 export const dynamic = "force-dynamic";
 

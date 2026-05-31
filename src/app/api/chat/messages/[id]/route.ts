@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { apiHandler, forbidden, notFound } from "@/lib/api-handler";
+import { prisma } from "@/lib/db/prisma";
+import { apiHandler, forbidden, notFound } from "@/lib/api/api-handler";
 import type { Server as SocketIOServer } from "socket.io";
 
 export const dynamic = "force-dynamic";

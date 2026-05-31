@@ -25,17 +25,31 @@ export function useSocket(namespace: string) {
     const s = sockets[namespace];
     setSocket(s);
 
-    if (s.connected) setConnected(true);
+    if (s.connected) {
+      console.log(`[Socket] ${namespace} already connected`);
+      setConnected(true);
+    }
 
-    const onConnect = () => setConnected(true);
-    const onDisconnect = () => setConnected(false);
+    const onConnect = () => {
+      console.log(`[Socket] ${namespace} connected`);
+      setConnected(true);
+    };
+    const onDisconnect = (reason: string) => {
+      console.log(`[Socket] ${namespace} disconnected:`, reason);
+      setConnected(false);
+    };
+    const onConnectError = (err: Error) => {
+      console.error(`[Socket] ${namespace} connect error:`, err.message);
+    };
 
     s.on("connect", onConnect);
     s.on("disconnect", onDisconnect);
+    s.on("connect_error", onConnectError);
 
     return () => {
       s.off("connect", onConnect);
       s.off("disconnect", onDisconnect);
+      s.off("connect_error", onConnectError);
     };
   }, [namespace]);
 

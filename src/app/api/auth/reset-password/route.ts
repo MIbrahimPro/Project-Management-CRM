@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { prisma } from "@/lib/prisma";
-import { apiHandler } from "@/lib/api-handler";
-import { checkRateLimit } from "@/lib/redis";
-import { REFRESH_TOKEN_SECRET, generateAccessToken, generateRefreshToken, generateDeviceId, hashToken, parseUserAgentFamily, REFRESH_TOKEN_EXPIRY_SECONDS, ACCESS_TOKEN_EXPIRY_SECONDS } from "@/lib/tokens";
-import { getCookie, clearFlowCookies, clearAuthCookies, setAuthCookies } from "@/lib/auth-helpers";
-import { logAction } from "@/lib/audit";
+import { prisma } from "@/lib/db/prisma";
+import { apiHandler } from "@/lib/api/api-handler";
+import { checkRateLimit } from "@/lib/db/redis";
+import { REFRESH_TOKEN_SECRET, generateAccessToken, generateRefreshToken, generateDeviceId, hashToken, parseUserAgentFamily, REFRESH_TOKEN_EXPIRY_SECONDS, ACCESS_TOKEN_EXPIRY_SECONDS } from "@/lib/auth/tokens";
+import { getCookie, clearFlowCookies, clearAuthCookies, setAuthCookies } from "@/lib/auth/auth-helpers";
+import { logAction } from "@/lib/db/audit";
 
 export const dynamic = "force-dynamic";
 

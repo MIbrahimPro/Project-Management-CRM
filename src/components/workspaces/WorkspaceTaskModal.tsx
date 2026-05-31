@@ -23,7 +23,7 @@ import {
   getAllowedWorkspacePostTargets,
   getPrimaryWorkspacePostTarget,
   workspacePostMenuLabel,
-} from "@/lib/workspace-post-status";
+} from "@/lib/workspace/workspace-post-status";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import MeetingRecordingList from "@/components/meetings/MeetingRecordingList";
 

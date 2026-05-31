@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { apiHandler } from "@/lib/api-handler";
-import { prisma } from "@/lib/prisma";
-import { getWorkHoursWarning } from "@/lib/work-hours";
+import { apiHandler } from "@/lib/api/api-handler";
+import { prisma } from "@/lib/db/prisma";
+import { getWorkHoursWarning } from "@/lib/attendance/work-hours";
 
 export const dynamic = "force-dynamic";
 

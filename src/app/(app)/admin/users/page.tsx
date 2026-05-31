@@ -72,7 +72,24 @@ export default function AdminUsersPage() {
   const [createRole, setCreateRole] = useState<string>("DEVELOPER");
   const [createWorkMode, setCreateWorkMode] = useState<string>("REMOTE");
   const [createStatedRole, setCreateStatedRole] = useState("");
+  const [createTimezone, setCreateTimezone] = useState<string>("Europe/Paris");
   const [creating, setCreating] = useState(false);
+
+  // Common timezones for selection
+  const TIMEZONES = [
+    { value: "Europe/Paris", label: "CET (Central Europe)" },
+    { value: "Europe/London", label: "GMT (UK)" },
+    { value: "America/New_York", label: "EST (US East)" },
+    { value: "America/Chicago", label: "CST (US Central)" },
+    { value: "America/Denver", label: "MST (US Mountain)" },
+    { value: "America/Los_Angeles", label: "PST (US West)" },
+    { value: "Asia/Tokyo", label: "JST (Japan)" },
+    { value: "Asia/Shanghai", label: "CST (China)" },
+    { value: "Asia/Dubai", label: "GST (Dubai)" },
+    { value: "Asia/Kolkata", label: "IST (India)" },
+    { value: "Australia/Sydney", label: "AEST (Sydney)" },
+    { value: "Pacific/Auckland", label: "NZST (New Zealand)" },
+  ];
 
   function loadUsers(q = search) {
     setLoading(true);
@@ -242,6 +259,7 @@ export default function AdminUsersPage() {
           name: createName.trim(), email: createEmail.trim(),
           role: createRole, workMode: createWorkMode,
           statedRole: createStatedRole.trim() || undefined,
+          timezone: createTimezone,
         }),
       });
       const d = (await res.json()) as { data?: User; error?: string };
@@ -249,7 +267,7 @@ export default function AdminUsersPage() {
       toast.success("User created & credentials emailed", { style: TOAST_STYLE });
       setCreateModal(false);
       setCreateName(""); setCreateEmail(""); setCreateRole("DEVELOPER");
-      setCreateWorkMode("REMOTE"); setCreateStatedRole("");
+      setCreateWorkMode("REMOTE"); setCreateStatedRole(""); setCreateTimezone("Europe/Paris");
       loadUsers();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed", { style: TOAST_ERROR_STYLE });
@@ -580,6 +598,13 @@ export default function AdminUsersPage() {
                 <label className="label py-0"><span className="label-text">Stated Role (optional)</span></label>
                 <input className="input input-bordered input-sm bg-base-100" placeholder="e.g. Backend Developer"
                   value={createStatedRole} onChange={(e) => setCreateStatedRole(e.target.value)} />
+              </div>
+              <div className="form-control gap-1 col-span-2">
+                <label className="label py-0"><span className="label-text">Timezone</span></label>
+                <select className="select select-bordered select-sm bg-base-100" value={createTimezone}
+                  onChange={(e) => setCreateTimezone(e.target.value)}>
+                  {TIMEZONES.map((tz) => <option key={tz.value} value={tz.value}>{tz.label}</option>)}
+                </select>
               </div>
             </div>
             <div className="alert bg-base-300 border-base-300 text-xs text-base-content/60 py-2">

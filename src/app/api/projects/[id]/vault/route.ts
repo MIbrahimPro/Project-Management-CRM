@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { apiHandler, forbidden } from "@/lib/api-handler";
-import { prisma } from "@/lib/prisma";
-import { logAction } from "@/lib/audit";
+import { apiHandler, forbidden } from "@/lib/api/api-handler";
+import { prisma } from "@/lib/db/prisma";
+import { logAction } from "@/lib/db/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -20,14 +20,19 @@ async function canRead(userId: string, role: string, projectId: string): Promise
   return !!member;
 }
 
-// Admins, managers, and clients can add/update secrets.
+// All non-client project members, plus clients of this project, can add/update secrets.
 async function canWrite(userId: string, role: string, projectId: string): Promise<boolean> {
   if (["ADMIN", "PROJECT_MANAGER"].includes(role)) return true;
   if (role === "CLIENT") {
     const project = await prisma.project.findUnique({ where: { id: projectId }, select: { clientId: true } });
     return project?.clientId === userId;
   }
-  return false;
+  // Any other non-client project member (dev, designer, HR, etc.)
+  const member = await prisma.projectMember.findFirst({
+    where: { projectId, userId },
+    select: { id: true },
+  });
+  return !!member;
 }
 
 const CreateSchema = z.object({
@@ -90,6 +95,14 @@ export const POST = apiHandler(
     });
 
     await logAction(userId, "VAULT_SECRET_SAVED", "ProjectSecret", created.id, { key: body.key });
+
+    if (global.io) {
+      global.io
+        .of("/chat")
+        .to(`project:${projectId}`)
+        .emit("vault_secret_saved", created);
+    }
+
     return NextResponse.json({ data: created }, { status: 201 });
   },
 );

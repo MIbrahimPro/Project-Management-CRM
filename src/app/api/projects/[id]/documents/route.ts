@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { apiHandler, forbidden } from "@/lib/api-handler";
-import { prisma } from "@/lib/prisma";
-import { logAction } from "@/lib/audit";
+import { apiHandler, forbidden } from "@/lib/api/api-handler";
+import { prisma } from "@/lib/db/prisma";
+import { logAction } from "@/lib/db/audit";
 
 export const dynamic = "force-dynamic";
 

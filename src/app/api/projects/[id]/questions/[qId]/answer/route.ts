@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { apiHandler, forbidden } from "@/lib/api-handler";
-import { prisma } from "@/lib/prisma";
-import { sendNotification } from "@/lib/notify";
-import { logAction } from "@/lib/audit";
+import { apiHandler, forbidden } from "@/lib/api/api-handler";
+import { prisma } from "@/lib/db/prisma";
+import { logAction } from "@/lib/db/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -31,45 +30,39 @@ export const POST = apiHandler(
 
     const { content } = AnswerSchema.parse(await req.json());
 
-    const answer = await prisma.questionAnswer.create({
-      data: { questionId, userId, content },
-      include: {
-        user: { select: { id: true, name: true, role: true } },
-      },
+    // Upsert: update existing answer from this user for this question, or create new
+    const existingAnswer = await prisma.questionAnswer.findFirst({
+      where: { questionId, userId },
+      orderBy: { createdAt: "desc" },
     });
+
+    const answer = existingAnswer
+      ? await prisma.questionAnswer.update({
+          where: { id: existingAnswer.id },
+          data: { content },
+          include: {
+            user: { select: { id: true, name: true, role: true } },
+          },
+        })
+      : await prisma.questionAnswer.create({
+          data: { questionId, userId, content },
+          include: {
+            user: { select: { id: true, name: true, role: true } },
+          },
+        });
 
     await logAction(userId, "QUESTION_ANSWERED", "QuestionAnswer", answer.id);
 
-    // Notify managers when client answers; notify client when manager answers
-    if (isClient) {
-      const managers = await prisma.projectMember.findMany({
-        where: {
-          projectId,
-          user: { role: { in: ["PROJECT_MANAGER", "ADMIN"] } },
-        },
-        select: { userId: true },
-      });
-      await Promise.all(
-        managers.map((m) =>
-          sendNotification(
-            m.userId,
-            "QUESTION_ANSWERED",
-            "Client Answered a Question",
-            `Client has answered a project question`,
-            `/projects/${projectId}/questions?highlight=${questionId}`
-          )
-        )
-      );
-    } else if (project?.clientId) {
-      await sendNotification(
-        project.clientId,
-        "QUESTION_ANSWERED",
-        "Question Answered",
-        `Your project question has been answered`,
-        `/projects/${projectId}/questions?highlight=${questionId}`
-      );
+    // Emit socket event for real-time updates
+    if (global.io) {
+      global.io
+        .of("/chat")
+        .to(`project:${projectId}`)
+        .emit("question_answered", { questionId, answer });
+    } else {
+      console.error(`[Socket] FAILED question_answered – global.io null`);
     }
 
-    return NextResponse.json({ data: answer }, { status: 201 });
+    return NextResponse.json({ data: answer }, { status: existingAnswer ? 200 : 201 });
   }
 );

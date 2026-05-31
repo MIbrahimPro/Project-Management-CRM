@@ -16,12 +16,12 @@ interface HrDashboardChartsProps {
 }
 
 const COLORS = [
-  "hsl(var(--p))",
-  "hsl(var(--s))",
-  "hsl(var(--a))",
-  "hsl(var(--n))",
-  "hsl(var(--er))",
-  "hsl(var(--su))",
+  "#3B82F6", // Blue
+  "#8B5CF6", // Purple
+  "#06B6D4", // Cyan
+  "#22C55E", // Green
+  "#F97316", // Orange
+  "#EC4899", // Pink
 ];
 
 export function HrDashboardCharts({ data }: HrDashboardChartsProps) {
@@ -38,16 +38,16 @@ export function HrDashboardCharts({ data }: HrDashboardChartsProps) {
           <div className="h-[300px] mt-4">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data.attendanceTrend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--bc) / 0.1)" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                 <XAxis 
                   dataKey="name" 
-                  stroke="hsl(var(--bc) / 0.5)" 
+                  stroke="#9CA3AF" 
                   fontSize={12}
                   tickLine={false}
                   axisLine={false}
                 />
                 <YAxis 
-                  stroke="hsl(var(--bc) / 0.5)" 
+                  stroke="#9CA3AF" 
                   fontSize={12}
                   tickLine={false}
                   axisLine={false}
@@ -55,12 +55,19 @@ export function HrDashboardCharts({ data }: HrDashboardChartsProps) {
                 <Tooltip 
                   contentStyle={{ 
                     backgroundColor: "hsl(var(--b1))", 
-                    borderColor: "hsl(var(--bc) / 0.1)",
+                    borderColor: "hsl(var(--bc) / 0.2)",
                     borderRadius: "0.5rem",
-                    fontSize: "12px"
+                    fontSize: "12px",
+                    color: "hsl(var(--bc))"
                   }}
+                  itemStyle={{ color: "hsl(var(--bc))" }}
+                  labelStyle={{ color: "hsl(var(--bc))" }}
                 />
-                <Legend iconType="circle" />
+                <Legend 
+                  iconType="circle" 
+                  wrapperStyle={{ color: "#9CA3AF" }}
+                  formatter={(value) => <span style={{ color: "#9CA3AF" }}>{value}</span>}
+                />
                 <Bar dataKey="present" fill="hsl(var(--su))" radius={[4, 4, 0, 0]} stackId="a" name="Present" />
                 <Bar dataKey="late" fill="hsl(var(--wa))" radius={[4, 4, 0, 0]} stackId="a" name="Late" />
                 <Bar dataKey="absent" fill="hsl(var(--er))" radius={[4, 4, 0, 0]} stackId="a" name="Absent" />
@@ -79,12 +86,12 @@ export function HrDashboardCharts({ data }: HrDashboardChartsProps) {
           <div className="h-[300px] mt-4">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart layout="vertical" data={data.hiringFunnel} margin={{ left: 40 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--bc) / 0.1)" />
-                <XAxis type="number" stroke="hsl(var(--bc) / 0.5)" fontSize={12} hide />
+                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                <XAxis type="number" stroke="#9CA3AF" fontSize={12} hide />
                 <YAxis 
                   dataKey="name" 
                   type="category" 
-                  stroke="hsl(var(--bc) / 0.5)" 
+                  stroke="#9CA3AF" 
                   fontSize={12}
                   tickLine={false}
                   axisLine={false}
@@ -98,7 +105,7 @@ export function HrDashboardCharts({ data }: HrDashboardChartsProps) {
                     fontSize: "12px"
                   }}
                 />
-                <Bar dataKey="value" fill="hsl(var(--p))" radius={[0, 4, 4, 0]} label={{ position: 'insideRight', fill: '#fff', fontSize: 10 }} />
+                <Bar dataKey="value" fill="hsl(var(--p))" radius={[0, 4, 4, 0]} label={{ position: 'insideRight', fill: 'hsl(var(--b1))', fontSize: 10 }} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -128,12 +135,19 @@ export function HrDashboardCharts({ data }: HrDashboardChartsProps) {
                 <Tooltip 
                   contentStyle={{ 
                     backgroundColor: "hsl(var(--b1))", 
-                    borderColor: "hsl(var(--bc) / 0.1)",
+                    borderColor: "hsl(var(--bc) / 0.2)",
                     borderRadius: "0.5rem",
-                    fontSize: "12px"
+                    fontSize: "12px",
+                    color: "hsl(var(--bc))"
                   }}
+                  itemStyle={{ color: "hsl(var(--bc))" }}
+                  labelStyle={{ color: "hsl(var(--bc))" }}
                 />
-                <Legend iconType="circle" />
+                <Legend 
+                  iconType="circle" 
+                  wrapperStyle={{ color: "#9CA3AF" }}
+                  formatter={(value) => <span style={{ color: "#9CA3AF" }}>{value}</span>}
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>

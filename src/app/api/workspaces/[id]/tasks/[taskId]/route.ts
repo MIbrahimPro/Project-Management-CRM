@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
-import { apiHandler, forbidden } from "@/lib/api-handler";
-import { logAction } from "@/lib/audit";
-import { deleteFile } from "@/lib/supabase-storage";
-import { canTransitionWorkspacePost } from "@/lib/workspace-post-status";
+import { prisma } from "@/lib/db/prisma";
+import { apiHandler, forbidden } from "@/lib/api/api-handler";
+import { logAction } from "@/lib/db/audit";
+import { deleteFile } from "@/lib/storage/supabase-storage";
+import { canTransitionWorkspacePost } from "@/lib/workspace/workspace-post-status";
 import type { WorkspaceTaskStatus } from "@/components/workspaces/types";
 
 export const dynamic = "force-dynamic";

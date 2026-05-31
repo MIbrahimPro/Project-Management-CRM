@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { apiHandler } from "@/lib/api-handler";
+import { prisma } from "@/lib/db/prisma";
+import { apiHandler } from "@/lib/api/api-handler";
 import { nanoid } from "nanoid";
 
 export const POST = apiHandler(async (req: NextRequest, ctx) => {

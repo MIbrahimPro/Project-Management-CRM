@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { apiHandler, forbidden } from "@/lib/api-handler";
-import { prisma } from "@/lib/prisma";
+import { apiHandler, forbidden } from "@/lib/api/api-handler";
+import { prisma } from "@/lib/db/prisma";
 import { UserRole } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
-// Internal team roles (excludes SUPER_ADMIN, ADMIN, CLIENT)
+// Internal team roles (excludes SUPER_ADMIN, ADMIN, PROJECT_MANAGER, CLIENT)
+// Managers and admins are auto-assigned to projects, so they shouldn't be selectable
 const TEAM_ROLES: UserRole[] = [
-  "PROJECT_MANAGER",
   "DEVELOPER",
   "DESIGNER",
   "HR",

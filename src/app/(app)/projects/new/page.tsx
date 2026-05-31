@@ -224,11 +224,14 @@ function NewProjectForm() {
 
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
+  const [loadingRequest, setLoadingRequest] = useState(!!requestId);
+  const [aiGeneratingMilestones, setAiGeneratingMilestones] = useState(false);
+  const [requestPdfUrl, setRequestPdfUrl] = useState<string | null>(null);
 
   // Step 1 — Basic info
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [clientId, setClientId] = useState("");
+  const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set());
   const [requestedById, setRequestedById] = useState("");
   const [price, setPrice] = useState("");
   const [clients, setClients] = useState<Client[]>([]);
@@ -262,19 +265,89 @@ function NewProjectForm() {
     });
   }, []);
 
-  // Prefill from client request
+  function toggleClient(id: string) {
+    setSelectedClientIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // Prefill from client request + start AI generation in background
   useEffect(() => {
     if (!requestId) return;
+    setLoadingRequest(true);
     fetch(`/api/projects/client-requests/${requestId}`)
       .then((r) => r.json())
-      .then((d: { data: { title: string; description: string; clientId: string } }) => {
+      .then((d: { data: { title: string; description: string; clientId: string; pdfUrl: string | null } }) => {
         if (!d.data) return;
         setTitle(d.data.title);
         setDescription(d.data.description);
-        setClientId(d.data.clientId);
+        setSelectedClientIds(new Set([d.data.clientId]));
         setRequestedById(d.data.clientId);
-      });
+        setRequestPdfUrl(d.data.pdfUrl);
+        
+        // Start AI milestone generation in background immediately
+        if (d.data.title && d.data.description) {
+          startAiMilestoneGeneration(d.data.title, d.data.description, d.data.pdfUrl);
+        }
+      })
+      .finally(() => setLoadingRequest(false));
   }, [requestId]);
+
+  // Background AI milestone + questions generation
+  async function startAiMilestoneGeneration(projTitle: string, projDescription: string, pdfUrl: string | null) {
+    setAiGeneratingMilestones(true);
+    try {
+      const res = await fetch("/api/ai/generate-milestones-and-questions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: projTitle,
+          description: projDescription,
+          pdfUrl,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      // Set milestones with comprehensive content
+      const generatedMilestones = (data.data.milestones ?? []).map((m: {
+        title: string;
+        content: string;
+        questions: string[];
+      }) => newMilestone(m.title, markdownToBlockJson(m.content)));
+
+      setMilestones(generatedMilestones.length > 0 ? generatedMilestones : [newMilestone()]);
+
+      // Pre-populate questions for step 4
+      const milestoneQuestions = (data.data.milestones ?? []).flatMap((m: {
+        title: string;
+        questions: string[];
+      }) => m.questions.map((q: string) => newQuestion(q, m.title)));
+
+      const generalQuestions = (data.data.generalQuestions ?? []).map((q: {
+        text: string;
+        partOf: string;
+      }) => newQuestion(q.text, q.partOf));
+
+      const allQuestions = [...milestoneQuestions, ...generalQuestions];
+      if (allQuestions.length > 0) {
+        setQuestions(allQuestions);
+      }
+
+      toast.success(`AI generated ${generatedMilestones.length} milestones and ${allQuestions.length} questions!`, {
+        style: TOAST_STYLE,
+      });
+    } catch (e) {
+      console.error("AI generation failed:", e);
+      // Keep defaults on error
+    } finally {
+      setAiGeneratingMilestones(false);
+    }
+  }
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -305,7 +378,7 @@ function NewProjectForm() {
       const res = await fetch("/api/ai/generate-milestones", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description: description + promptAddition }),
+        body: JSON.stringify({ title, description: description + promptAddition, pdfUrl: requestPdfUrl }),
       });
       const data = (await res.json()) as { data?: { title: string; content: string }[]; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Failed");
@@ -360,6 +433,7 @@ function NewProjectForm() {
   }
 
   function canNext() {
+    if (loadingRequest) return false;
     if (step === 1) return title.trim().length >= 2;
     if (step === 2) return description.trim().length >= 10;
     if (step === 3) return milestones.length > 0 && milestones.every((m) => m.title.trim());
@@ -375,7 +449,7 @@ function NewProjectForm() {
         body: JSON.stringify({
           title,
           description,
-          clientId: clientId || undefined,
+          clientIds: Array.from(selectedClientIds),
           requestedById: requestedById || undefined,
           requestId: requestId || undefined,
           price: price ? Number(price) : undefined,
@@ -400,14 +474,15 @@ function NewProjectForm() {
   const ROLE_LABELS: Record<string, string> = {
     DEVELOPER: "Developer",
     DESIGNER: "Designer",
-    PROJECT_MANAGER: "PM",
     HR: "HR",
     ACCOUNTANT: "Accountant",
     SALES: "Sales",
   };
 
+  const EXCLUDED_ROLES = ["ADMIN", "PROJECT_MANAGER", "SUPER_ADMIN"];
+
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className={`mx-auto space-y-6 ${step === 3 ? "max-w-5xl" : "max-w-2xl"}`}>
       {/* Header */}
       <div className="flex items-center gap-3">
         <button className="btn btn-ghost btn-sm btn-circle" onClick={() => router.push("/projects")}>
@@ -435,68 +510,115 @@ function NewProjectForm() {
         <div className="card bg-base-200 shadow-sm">
           <div className="card-body space-y-4">
             <div className="form-control gap-1">
-              <label className="label py-0"><span className="label-text">Project Title *</span></label>
+              <label className="label py-0">
+                <span className="label-text">Project Title *</span>
+                {loadingRequest && <span className="loading loading-dots loading-xs text-primary" />}
+              </label>
               <input
                 type="text"
                 className="input input-bordered bg-base-100"
-                placeholder="e.g. E-commerce Website Redesign"
+                placeholder={loadingRequest ? "Loading from request..." : "e.g. E-commerce Website Redesign"}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 minLength={2}
                 maxLength={200}
+                disabled={loadingRequest}
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="form-control gap-1">
-                <label className="label py-0"><span className="label-text">Client</span></label>
-                <select
-                  className="select select-bordered bg-base-100"
-                  value={clientId}
-                  onChange={(e) => setClientId(e.target.value)}
-                >
-                  <option value="">No client</option>
-                  {clients.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
+                <label className="label py-0">
+                  <span className="label-text">Clients</span>
+                  {loadingRequest ? (
+                    <span className="loading loading-dots loading-xs text-primary" />
+                  ) : (
+                    <span className="label-text-alt text-xs text-base-content/50">
+                      Multiple allowed
+                    </span>
+                  )}
+                </label>
+                <div className={`grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1 ${loadingRequest ? "opacity-50" : ""}`}>
+                  {loadingRequest ? (
+                    <div className="col-span-2 flex items-center justify-center py-8 text-base-content/40">
+                      <span className="loading loading-spinner loading-sm text-primary mr-2" />
+                      Loading clients...
+                    </div>
+                  ) : (
+                    clients.map((c) => {
+                      const selected = selectedClientIds.has(c.id);
+                      return (
+                        <label
+                          key={c.id}
+                          className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors border ${
+                            selected ? "bg-primary/10 border-primary/30" : "bg-base-100 border-transparent hover:bg-base-300"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="checkbox checkbox-primary checkbox-xs"
+                            checked={selected}
+                            onChange={() => toggleClient(c.id)}
+                          />
+                          <div className="flex flex-col min-w-0">
+                            <span className="text-xs font-medium truncate">{c.name}</span>
+                          </div>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
               </div>
 
               <div className="form-control gap-1">
-                <label className="label py-0"><span className="label-text">Budget (USD)</span></label>
+                <label className="label py-0">
+                  <span className="label-text">Budget (USD)</span>
+                  {loadingRequest && <span className="loading loading-dots loading-xs text-primary" />}
+                </label>
                 <input
                   type="number"
                   className="input input-bordered bg-base-100"
-                  placeholder="0.00"
+                  placeholder={loadingRequest ? "Loading..." : "0.00"}
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
                   min={0}
+                  disabled={loadingRequest}
                 />
               </div>
             </div>
 
             <div className="form-control gap-1">
-              <label className="label py-0"><span className="label-text">Assign Team Members</span></label>
+              <label className="label py-0">
+                <span className="label-text">Assign Team Members</span>
+                <span className="label-text-alt text-xs text-base-content/50">
+                  Managers auto-assigned
+                </span>
+              </label>
               <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1">
-                {teamMembers.map((m) => {
-                  const selected = selectedMemberIds.has(m.id);
-                  return (
-                    <label
-                      key={m.id}
-                      className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors border ${
-                        selected ? "bg-primary/10 border-primary/30" : "bg-base-100 border-transparent hover:bg-base-300"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        className="checkbox checkbox-primary checkbox-xs"
-                        checked={selected}
-                        onChange={() => toggleMember(m.id)}
-                      />
-                      <span className="text-xs font-medium truncate">{m.name}</span>
-                    </label>
-                  );
-                })}
+                {teamMembers
+                  .filter((m) => !EXCLUDED_ROLES.includes(m.role))
+                  .map((m) => {
+                    const selected = selectedMemberIds.has(m.id);
+                    return (
+                      <label
+                        key={m.id}
+                        className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors border ${
+                          selected ? "bg-primary/10 border-primary/30" : "bg-base-100 border-transparent hover:bg-base-300"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="checkbox checkbox-primary checkbox-xs"
+                          checked={selected}
+                          onChange={() => toggleMember(m.id)}
+                        />
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-xs font-medium truncate">{m.name}</span>
+                          <span className="text-[10px] text-base-content/50">{ROLE_LABELS[m.role] || m.role}</span>
+                        </div>
+                      </label>
+                    );
+                  })}
               </div>
             </div>
           </div>
@@ -526,7 +648,21 @@ function NewProjectForm() {
 
       {/* ── Step 3: Milestones ── */}
       {step === 3 && (
-        <div className="card bg-base-200 shadow-sm">
+        <div className="card bg-base-200 shadow-sm relative">
+          {/* AI Loading Overlay */}
+          {aiGeneratingMilestones && (
+            <div className="absolute inset-0 bg-base-200/90 backdrop-blur-sm z-10 flex flex-col items-center justify-center rounded-lg">
+              <span className="loading loading-spinner loading-lg text-primary mb-4" />
+              <p className="text-lg font-semibold text-base-content">AI Architect Analyzing...</p>
+              <p className="text-sm text-base-content/60 mt-2 max-w-xs text-center">
+                {requestPdfUrl 
+                  ? "Reading PDF brief, generating comprehensive milestones with scope boundaries, and creating clarifying questions" 
+                  : "Generating detailed milestones with anti-scope-creep defenses and clarifying questions"}
+              </p>
+              <p className="text-xs text-base-content/40 mt-2">Powered by reasoning AI • This may take 10-30 seconds</p>
+            </div>
+          )}
+          
           <div className="card-body space-y-4">
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -535,9 +671,9 @@ function NewProjectForm() {
                   type="button"
                   className="btn btn-outline btn-sm gap-2"
                   onClick={() => void generateMilestones()}
-                  disabled={generatingMilestones}
+                  disabled={generatingMilestones || aiGeneratingMilestones}
                 >
-                  {generatingMilestones ? (
+                  {generatingMilestones || aiGeneratingMilestones ? (
                     <span className="loading loading-spinner loading-xs" />
                   ) : (
                     <Sparkles className="w-4 h-4" />
@@ -551,12 +687,13 @@ function NewProjectForm() {
                 placeholder="Custom instructions for AI (e.g. 'Include deployment milestone')"
                 value={aiPrompt}
                 onChange={(e) => setAiPrompt(e.target.value)}
+                disabled={aiGeneratingMilestones}
               />
             </div>
 
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={milestones.map((m) => m.id)} strategy={verticalListSortingStrategy}>
-                <div className="space-y-2">
+                <div className={`space-y-2 ${aiGeneratingMilestones ? "opacity-50" : ""}`}>
                   {milestones.map((m) => (
                     <SortableMilestone
                       key={m.id}
@@ -573,6 +710,7 @@ function NewProjectForm() {
               type="button"
               className="btn btn-ghost btn-sm gap-2 w-full border border-dashed border-base-content/20"
               onClick={() => setMilestones((ms) => [...ms, newMilestone()])}
+              disabled={aiGeneratingMilestones}
             >
               <Plus className="w-4 h-4" /> Add Milestone
             </button>
@@ -689,8 +827,17 @@ function NewProjectForm() {
             onClick={() => setStep((s) => s + 1)}
             disabled={!canNext()}
           >
-            Next
-            <ArrowRight className="w-4 h-4" />
+            {loadingRequest && step === 1 ? (
+              <>
+                <span className="loading loading-spinner loading-sm" />
+                Loading...
+              </>
+            ) : (
+              <>
+                Next
+                <ArrowRight className="w-4 h-4" />
+              </>
+            )}
           </button>
         ) : (
           <button

@@ -24,6 +24,7 @@ import {
   KeyRound,
   Users,
   Sparkles,
+  HardDrive,
   type LucideProps,
 } from "lucide-react";
 import type { SidebarItem } from "@/config/sidebar";
@@ -47,6 +48,7 @@ const ICON_MAP: Record<string, IconComponent> = {
   KeyRound,
   Users,
   Sparkles,
+  HardDrive,
 };
 
 function resolveIcon(name: string): IconComponent {

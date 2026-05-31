@@ -1,19 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { apiHandler, forbidden } from "@/lib/api-handler";
-import { prisma } from "@/lib/prisma";
-import { logAction } from "@/lib/audit";
+import { apiHandler, forbidden } from "@/lib/api/api-handler";
+import { prisma } from "@/lib/db/prisma";
+import { logAction } from "@/lib/db/audit";
 
 export const dynamic = "force-dynamic";
 
 async function canDelete(userId: string, role: string, projectId: string): Promise<boolean> {
-  // Only managers/admins can delete vault secrets
   if (["ADMIN", "PROJECT_MANAGER"].includes(role)) return true;
-  // Client can also delete secrets they might have added
   if (role === "CLIENT") {
     const project = await prisma.project.findUnique({ where: { id: projectId }, select: { clientId: true } });
     return project?.clientId === userId;
   }
-  return false;
+  // Any non-client project member can delete
+  const member = await prisma.projectMember.findFirst({
+    where: { projectId, userId },
+    select: { id: true },
+  });
+  return !!member;
 }
 
 export const DELETE = apiHandler(
@@ -38,6 +41,13 @@ export const DELETE = apiHandler(
 
     await prisma.projectSecret.delete({ where: { id: secretId } });
     await logAction(userId, "VAULT_SECRET_DELETED", "ProjectSecret", secretId, { key: existing.key });
+
+    if (global.io) {
+      global.io
+        .of("/chat")
+        .to(`project:${projectId}`)
+        .emit("vault_secret_deleted", { secretId });
+    }
 
     return NextResponse.json({ data: { id: secretId } });
   },

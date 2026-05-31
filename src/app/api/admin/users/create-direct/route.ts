@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/db/prisma";
 import { Resend } from "resend";
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
-import { logAction } from "@/lib/audit";
-import { requireUserManagement } from "@/lib/admin-user-management";
+import { logAction } from "@/lib/db/audit";
+import { requireUserManagement } from "@/lib/auth/admin-user-management";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +20,7 @@ const bodySchema = z.object({
   ]),
   workMode: z.enum(["REMOTE", "ONSITE", "HYBRID"]).default("REMOTE"),
   statedRole: z.string().max(100).optional(),
+  timezone: z.string().default("Europe/Paris"),
 });
 
 function generatePassword(): string {
@@ -56,6 +57,7 @@ export async function POST(req: NextRequest) {
         role: body.role,
         workMode: body.workMode,
         statedRole: body.statedRole,
+        timezone: body.timezone,
         isActive: true,
       },
       select: { id: true, name: true, email: true, role: true },

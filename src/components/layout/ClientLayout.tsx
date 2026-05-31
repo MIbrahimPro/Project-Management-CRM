@@ -74,7 +74,7 @@ export function ClientLayout({ user, sidebarItems, children }: ClientLayoutProps
   // Overtime Modal State
   const [overtimeCheckInId, setOvertimeCheckInId] = useState<string | null>(null);
 
-  const { socket: notifSocket } = useSocket("/notifications");
+  const { socket: notifSocket } = useSocket("/chat");
 
   useEffect(() => {
     if (!notifSocket) return;

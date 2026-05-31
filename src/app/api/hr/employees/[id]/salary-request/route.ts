@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
-import { apiHandler, forbidden } from "@/lib/api-handler";
-import { logAction } from "@/lib/audit";
+import { prisma } from "@/lib/db/prisma";
+import { apiHandler, forbidden } from "@/lib/api/api-handler";
+import { logAction } from "@/lib/db/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -75,7 +75,7 @@ export const POST = apiHandler(async (req: NextRequest, ctx) => {
   });
 
   if (admins.length > 0) {
-    const { sendNotification } = await import("@/lib/notify");
+    const { sendNotification } = await import("@/lib/notifications/notify");
     await Promise.all(admins.map(a => 
       sendNotification(
         a.id,

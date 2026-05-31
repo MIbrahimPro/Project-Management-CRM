@@ -43,8 +43,17 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
     };
 
     presenceSocket.on("presence_update", handleUpdate);
+
+    // Send ping every 30 seconds to keep presence alive (server TTL is 65s)
+    const pingInterval = setInterval(() => {
+      if (presenceSocket.connected) {
+        presenceSocket.emit("ping");
+      }
+    }, 30000);
+
     return () => {
       presenceSocket.off("presence_update", handleUpdate);
+      clearInterval(pingInterval);
     };
   }, [presenceSocket]);
 

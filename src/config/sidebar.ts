@@ -56,14 +56,11 @@ export function getProjectSidebarItems(projectId: string, role: string): Sidebar
     { label: "Dashboard",         href: `/projects/${projectId}`,              icon: "LayoutDashboard" },
   ];
 
-  if (role !== "CLIENT") {
-    items.push({ label: "AI Chat", href: `/projects/${projectId}/ai`, icon: "Sparkles" });
-  }
-
   items.push(
     { label: "Chat",              href: `/projects/${projectId}/chat`,         icon: "MessageSquare" },
     { label: "Questions",         href: `/projects/${projectId}/questions`,    icon: "MessageCircleQuestion", badgeKey: "questionsUnanswered" },
     { label: "Milestone Docs",     href: `/projects/${projectId}/documents`,    icon: "FileText" },
+    { label: "Assets",            href: `/projects/${projectId}/assets`,       icon: "HardDrive" },
     { label: "Vault",             href: `/projects/${projectId}/vault`,        icon: "KeyRound" },
   );
 

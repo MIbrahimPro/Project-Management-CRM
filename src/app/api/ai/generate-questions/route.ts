@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { apiHandler, forbidden } from "@/lib/api-handler";
-import { callAIJson } from "@/lib/ai";
+import { apiHandler, forbidden } from "@/lib/api/api-handler";
+import { callAIJson } from "@/lib/ai/ai";
 
 export const dynamic = "force-dynamic";
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
-import { apiHandler } from "@/lib/api-handler";
+import { apiHandler } from "@/lib/api/api-handler";
 
 export const dynamic = "force-dynamic";
 

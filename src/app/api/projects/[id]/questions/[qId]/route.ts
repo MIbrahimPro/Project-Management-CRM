@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { apiHandler, forbidden } from "@/lib/api-handler";
-import { prisma } from "@/lib/prisma";
-import { logAction } from "@/lib/audit";
+import { apiHandler, forbidden } from "@/lib/api/api-handler";
+import { prisma } from "@/lib/db/prisma";
+import { logAction } from "@/lib/db/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +51,16 @@ export const PATCH = apiHandler(
 
     await logAction(userId, "QUESTION_UPDATED", "ProjectQuestion", qId);
 
+    // Emit socket event for real-time updates
+    if (global.io) {
+      global.io
+        .of("/chat")
+        .to(`project:${projectId}`)
+        .emit("question_updated", updated);
+    } else {
+      console.error(`[Socket] FAILED question_updated – global.io null`);
+    }
+
     return NextResponse.json({ data: updated });
   }
 );
@@ -78,6 +88,16 @@ export const DELETE = apiHandler(
 
     await prisma.projectQuestion.delete({ where: { id: qId } });
     await logAction(userId, "QUESTION_DELETED", "ProjectQuestion", qId);
+
+    // Emit socket event for real-time updates
+    if (global.io) {
+      global.io
+        .of("/chat")
+        .to(`project:${projectId}`)
+        .emit("question_deleted", { questionId: qId });
+    } else {
+      console.error(`[Socket] FAILED question_deleted – global.io null`);
+    }
 
     return NextResponse.json({ success: true });
   }

@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
-import { verifyAccessToken } from "@/lib/tokens";
+import { verifyAccessToken } from "@/lib/auth/tokens";
 
 export const dynamic = "force-dynamic";
 

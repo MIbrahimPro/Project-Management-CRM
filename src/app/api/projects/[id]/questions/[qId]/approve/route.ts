@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { apiHandler, forbidden } from "@/lib/api-handler";
-import { prisma } from "@/lib/prisma";
-import { logAction } from "@/lib/audit";
+import { apiHandler, forbidden } from "@/lib/api/api-handler";
+import { prisma } from "@/lib/db/prisma";
+import { logAction } from "@/lib/db/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -25,12 +25,25 @@ export const PATCH = apiHandler(
 
     await logAction(userId, "QUESTION_APPROVED", "ProjectQuestion", qId);
 
-    // Server-side broadcast so all viewers get the update even if client relay fails
-    if (global.io) {
+    const question = await prisma.projectQuestion.findUnique({
+      where: { id: qId },
+      include: {
+        answers: {
+          orderBy: { createdAt: "desc" },
+          include: { user: { select: { id: true, name: true, role: true } } },
+        },
+        milestone: { select: { id: true, order: true, title: true } },
+        createdBy: { select: { id: true, name: true, role: true } },
+      },
+    });
+
+    if (global.io && question) {
       global.io
         .of("/chat")
-        .to(`project_questions:${projectId}`)
-        .emit("question_approved", { questionId: qId });
+        .to(`project:${projectId}`)
+        .emit("question_approved", question);
+    } else if (!global.io) {
+      console.error(`[Socket] FAILED question_approved – global.io null`);
     }
 
     return NextResponse.json({ success: true });

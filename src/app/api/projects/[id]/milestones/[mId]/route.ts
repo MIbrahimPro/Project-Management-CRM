@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { apiHandler, forbidden } from "@/lib/api-handler";
-import { prisma } from "@/lib/prisma";
-import { logAction } from "@/lib/audit";
+import { apiHandler, forbidden } from "@/lib/api/api-handler";
+import { prisma } from "@/lib/db/prisma";
+import { logAction } from "@/lib/db/audit";
+import type { Server } from "socket.io";
+
+declare global {
+  var io: Server;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -48,8 +53,9 @@ export const PATCH = apiHandler(
       data: updateData,
     });
 
-    // If this completion was the last incomplete milestone, auto-complete the project.
+    // Handle project status based on milestone changes
     if (body.status === "COMPLETED") {
+      // If this completion was the last incomplete milestone, auto-complete the project
       const remaining = await prisma.milestone.count({
         where: { projectId, status: { not: "COMPLETED" } },
       });
@@ -59,11 +65,43 @@ export const PATCH = apiHandler(
           data: { status: "COMPLETED" },
         });
       }
+    } else if (body.status) {
+      // body.status is NOT_STARTED, IN_PROGRESS, or BLOCKED here
+      // If milestone changed away from COMPLETED, and project was COMPLETED, revert to ACTIVE
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: { status: true },
+      });
+      if (project?.status === "COMPLETED") {
+        await prisma.project.update({
+          where: { id: projectId },
+          data: { status: "ACTIVE" },
+        });
+      }
     }
 
     await logAction(userId, "MILESTONE_UPDATED", "Milestone", milestoneId, {
       changes: Object.keys(updateData),
     });
+
+    // Fetch full project with includes for socket emission
+    const fullProject = await prisma.project.findUnique({
+      where: { id: projectId },
+      include: {
+        milestones: { orderBy: { order: "asc" } },
+        members: {
+          include: {
+            user: { select: { id: true, name: true, profilePicUrl: true, role: true } },
+          },
+        },
+        client: { select: { id: true, name: true, profilePicUrl: true } },
+      },
+    });
+
+    // Emit real-time update so everyone sees milestone changes
+    if (global.io && fullProject) {
+      global.io.of("/projects").emit("project_updated", { project: fullProject });
+    }
 
     return NextResponse.json({ data: milestone });
   }

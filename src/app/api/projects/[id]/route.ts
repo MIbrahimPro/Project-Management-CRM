@@ -1,12 +1,64 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { apiHandler, forbidden } from "@/lib/api-handler";
-import { prisma } from "@/lib/prisma";
-import { logAction } from "@/lib/audit";
-import { ensureProjectChatRooms } from "@/lib/project-chat";
-import { getSignedUrl } from "@/lib/supabase-storage";
+import { apiHandler, forbidden } from "@/lib/api/api-handler";
+import { prisma } from "@/lib/db/prisma";
+import { logAction } from "@/lib/db/audit";
+import { ensureProjectChatRooms } from "@/lib/chat/project-chat";
+import { getSignedUrl } from "@/lib/storage/supabase-storage";
+import type { Server } from "socket.io";
+
+declare global {
+  var io: Server;
+}
 
 export const dynamic = "force-dynamic";
+
+// Extract storage path from either a path or a full Supabase URL
+function extractStoragePath(input: string | null | undefined): string | null {
+  if (!input) return null;
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  // Already a storage path
+  if (
+    trimmed.startsWith("profile-pics/") ||
+    trimmed.startsWith("chat-media/") ||
+    trimmed.startsWith("workspace-task-media/") ||
+    trimmed.startsWith("photos/") ||
+    trimmed.startsWith("cv-files/") ||
+    trimmed.startsWith("project-pdfs/") ||
+    trimmed.startsWith("receipts/") ||
+    trimmed.startsWith("recordings/") ||
+    trimmed.startsWith("contracts/")
+  ) {
+    return trimmed;
+  }
+
+  // Extract from Supabase signed URL
+  try {
+    const url = new URL(trimmed);
+    const marker = "/devrolin-files/";
+    const idx = url.pathname.indexOf(marker);
+    if (idx !== -1) {
+      return decodeURIComponent(url.pathname.slice(idx + marker.length)).split("?")[0];
+    }
+  } catch {
+    // Not a valid URL
+  }
+
+  return null;
+}
+
+// Get signed URL for a profile pic, handling both paths and full URLs
+async function getAvatarSignedUrl(profilePicUrl: string | null | undefined): Promise<string | null> {
+  const path = extractStoragePath(profilePicUrl);
+  if (!path) return profilePicUrl || null;
+  try {
+    return await getSignedUrl(path, 3600);
+  } catch {
+    return profilePicUrl || null;
+  }
+}
 
 const PatchSchema = z.object({
   title: z.string().min(2).max(200).optional(),
@@ -55,8 +107,7 @@ export const GET = apiHandler(
 
     if (!(await canAccess(userId, role, id))) forbidden();
 
-    const [project, projectDescription, roomMember, unansweredQuestions] = await Promise.all([
-      prisma.project.findUnique({
+    const project = await prisma.project.findUnique({
         where: { id },
         include: {
           milestones: { orderBy: { order: "asc" } },
@@ -68,23 +119,46 @@ export const GET = apiHandler(
           client: { select: { id: true, name: true, profilePicUrl: true } },
           _count: { select: { documents: true, questions: true } },
         },
-      }),
-      prisma.aIContext.findFirst({
+      });
+
+      const projectDescription = await prisma.aIContext.findFirst({
         where: {
           projectId: id,
           taskId: null,
           workspaceId: null,
         },
         select: { content: true },
-      }),
-      prisma.chatRoomMember.findFirst({
+      });
+
+      const roomMember = await prisma.chatRoomMember.findFirst({
         where: { room: { projectId: id }, userId },
         select: { lastReadAt: true },
-      }),
-      prisma.projectQuestion.count({
-        where: { projectId: id, isApproved: false },
-      }),
-    ] as const);
+      });
+
+      // Different counts for clients vs managers
+      const isClient = project?.clientId === userId;
+      const isManager = ["ADMIN", "PROJECT_MANAGER"].includes(role);
+
+      const [unansweredQuestions, pendingApprovalCount, managers] = await Promise.all([
+        // Unanswered = approved questions with no answers
+        prisma.projectQuestion.count({
+          where: { projectId: id, isApproved: true, answers: { none: {} } },
+        }),
+        // Pending approval = unapproved questions (all non-client roles)
+        !isClient
+          ? prisma.projectQuestion.count({
+              where: { projectId: id, isApproved: false },
+            })
+          : Promise.resolve(0),
+        // Fetch ADMIN and PROJECT_MANAGER users to show in team list
+        prisma.user.findMany({
+          where: {
+            role: { in: ["ADMIN", "PROJECT_MANAGER"] },
+            isActive: true,
+          },
+          select: { id: true, name: true, profilePicUrl: true, role: true },
+        }),
+      ] as const);
 
     const unreadMessages = await prisma.message.count({
       where: {
@@ -96,44 +170,50 @@ export const GET = apiHandler(
 
     if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    // Generate signed URLs and filter out SUPER_ADMIN
+    // Generate signed URLs and filter out SUPER_ADMIN from regular members
     const membersWithSignedUrls = (
       await Promise.all(
         project.members.map(async (m) => {
           if (m.user.role === "SUPER_ADMIN") return null;
-          let avatarSignedUrl: string | null = null;
-          if (m.user.profilePicUrl) {
-            try {
-              avatarSignedUrl = await getSignedUrl(m.user.profilePicUrl, 3600);
-            } catch {}
-          }
+          const avatarSignedUrl = await getAvatarSignedUrl(m.user.profilePicUrl);
           return {
             ...m,
             user: {
               ...m.user,
-              profilePicUrl: avatarSignedUrl || m.user.profilePicUrl,
+              profilePicUrl: avatarSignedUrl,
             },
           };
         })
       )
     ).filter((m): m is Exclude<typeof m, null> => m !== null);
 
+    // Process managers with signed URLs
+    const managersWithSignedUrls = await Promise.all(
+      managers.map(async (u) => {
+        const avatarSignedUrl = await getAvatarSignedUrl(u.profilePicUrl);
+        return {
+          ...u,
+          profilePicUrl: avatarSignedUrl,
+        };
+      })
+    );
+
     let clientWithSignedUrl = project.client;
     if (project.client?.profilePicUrl) {
-      try {
-        const url = await getSignedUrl(project.client.profilePicUrl, 3600);
-        clientWithSignedUrl = { ...project.client, profilePicUrl: url };
-      } catch {}
+      const url = await getAvatarSignedUrl(project.client.profilePicUrl);
+      clientWithSignedUrl = { ...project.client, profilePicUrl: url };
     }
 
     return NextResponse.json({
       data: {
         ...project,
         members: membersWithSignedUrls,
+        managers: managersWithSignedUrls,
         client: clientWithSignedUrl,
         projectDescription: projectDescription?.content ?? "",
         unreadMessages,
         unansweredQuestions,
+        pendingApprovalCount,
       },
     });
   }
@@ -305,6 +385,21 @@ export const PATCH = apiHandler(
         await tx.milestone.deleteMany({
           where: { projectId: id, id: { notIn: Array.from(seenIds) } },
         });
+
+        // If new milestones were added and project was COMPLETED, revert to ACTIVE
+        const hasNewMilestones = milestones.some((m) => !m.id || !existingIds.has(m.id));
+        if (hasNewMilestones) {
+          const projectStatus = await tx.project.findUnique({
+            where: { id },
+            select: { status: true },
+          });
+          if (projectStatus?.status === "COMPLETED") {
+            await tx.project.update({
+              where: { id },
+              data: { status: "ACTIVE" },
+            });
+          }
+        }
       }
 
       if (teamMemberIds !== undefined || projectData.clientId !== undefined) {
@@ -312,10 +407,32 @@ export const PATCH = apiHandler(
       }
 
       return updated;
+    }, {
+      maxWait: 10000, // 10s to acquire transaction
+      timeout: 60000, // 60s for transaction execution
     });
+
+    // Fetch full project with includes for socket emission
+    const fullProject = await prisma.project.findUnique({
+      where: { id },
+      include: {
+        milestones: { orderBy: { order: "asc" } },
+        members: {
+          include: {
+            user: { select: { id: true, name: true, profilePicUrl: true, role: true } },
+          },
+        },
+        client: { select: { id: true, name: true, profilePicUrl: true } },
+      },
+    });
+
+    // Emit real-time update
+    if (global.io && fullProject) {
+      global.io.of("/projects").emit("project_updated", { project: fullProject });
+    }
 
     await logAction(userId, "PROJECT_UPDATED", "Project", id);
 
-    return NextResponse.json({ data: project });
+    return NextResponse.json({ data: fullProject ?? project });
   }
 );

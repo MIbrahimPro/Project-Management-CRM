@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
-import { apiHandler, forbidden } from "@/lib/api-handler";
-import { logAction } from "@/lib/audit";
-import { sendNotification } from "@/lib/notify";
+import { prisma } from "@/lib/db/prisma";
+import { apiHandler, forbidden } from "@/lib/api/api-handler";
+import { logAction } from "@/lib/db/audit";
+import { sendNotification } from "@/lib/notifications/notify";
 
 export const dynamic = "force-dynamic";
 

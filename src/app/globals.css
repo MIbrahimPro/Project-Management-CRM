@@ -123,3 +123,36 @@
     border-color: transparent;
   }
 }
+
+/* Modal backdrop fix — ensure full viewport coverage from top to bottom */
+@layer components {
+  .modal {
+    @apply fixed z-50;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+  .modal-backdrop {
+    @apply fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: -1;
+    background-color: hsl(var(--b1) / 0.7);
+    backdrop-filter: blur(4px);
+  }
+  /* Remove default margin-top from modal-box and center properly */
+  .modal-box {
+    margin-top: 0;
+    max-height: calc(100vh - 2rem);
+    max-height: calc(100dvh - 2rem);
+  }
+  /* When modal is open, ensure backdrop covers everything */
+  .modal-open .modal-backdrop {
+    @apply fixed inset-0;
+  }
+}

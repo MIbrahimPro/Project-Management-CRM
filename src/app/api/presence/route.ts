@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { apiHandler } from "@/lib/api-handler";
-import { getAllOnlineUsers } from "@/lib/redis";
+import { apiHandler } from "@/lib/api/api-handler";
+import { getAllOnlineUsers } from "@/lib/db/redis";
 
 export const dynamic = "force-dynamic";
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { sendPushNotification } from "@/lib/push";
-import { logAction } from "@/lib/audit";
+import { sendPushNotification } from "@/lib/notifications/push";
+import { logAction } from "@/lib/db/audit";
 
 export const dynamic = "force-dynamic";
 

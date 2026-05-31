@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { apiHandler, forbidden } from "@/lib/api-handler";
+import { apiHandler, forbidden } from "@/lib/api/api-handler";
 
 export const dynamic = "force-dynamic";
 

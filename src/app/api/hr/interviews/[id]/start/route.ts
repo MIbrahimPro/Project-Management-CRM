@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { apiHandler, forbidden } from "@/lib/api-handler";
-import { prisma } from "@/lib/prisma";
+import { apiHandler, forbidden } from "@/lib/api/api-handler";
+import { prisma } from "@/lib/db/prisma";
 import { Resend } from "resend";
 import { v4 as uuidv4 } from "uuid";
 

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { UserRole } from "@prisma/client";
-import type { DashboardData } from "@/lib/dashboard-data";
+import type { DashboardData } from "@/lib/dashboard/dashboard-data";
 import { ProjectCard, type ProjectCardModel } from "@/components/projects/ProjectCard";
 
 interface RoleWidgetsProps {

@@ -2,11 +2,12 @@
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { Check, History, Pencil, Plus, Sparkles, Trash2, User, X } from "lucide-react";
+import { Check, Plus, X } from "lucide-react";
 import toast from "react-hot-toast";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { useSocket } from "@/hooks/useSocket";
+import { QuestionCard } from "@/components/projects/QuestionCard";
 
 dayjs.extend(relativeTime);
 
@@ -31,6 +32,8 @@ type Question = {
   answers: Answer[];
   milestone: { id: string; order: number; title: string } | null;
   createdBy?: QuestionCreator | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 type Milestone = { id: string; order: number; title: string };
@@ -65,6 +68,9 @@ function QuestionsInner() {
   const [editPartOf, setEditPartOf] = useState("start");
   const [editSaving, setEditSaving] = useState(false);
 
+  // Delete confirmation modal
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   const questionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const { socket } = useSocket("/chat");
@@ -90,40 +96,56 @@ function QuestionsInner() {
       .finally(() => setLoading(false));
   }, [projectId]);
 
-  // Socket listeners for real-time question updates
+  // Socket listeners for real-time question updates (server auto-joins project rooms)
   useEffect(() => {
-    if (!socket || !projectId) return;
+    if (!socket || !projectId || !user) return;
 
-    const roomKey = `project_questions:${projectId}`;
-    socket.emit("join_room", roomKey);
+    const isClient = user.role === "CLIENT";
 
-    const onQuestionAdded = (q: Question) => {
+    const onQuestionAdded = (question: Question) => {
+      if (isClient && !question.isApproved) return;
       setQuestions((prev) => {
-        if (prev.some((existing) => existing.id === q.id)) return prev;
-        return [...prev, { ...q, answers: q.answers ?? [] }];
+        if (prev.some((q) => q.id === question.id)) return prev;
+        return [...prev, question];
       });
     };
 
-    const onQuestionApproved = ({ questionId }: { questionId: string }) => {
+    const onQuestionApproved = (question: Question) => {
+      setQuestions((prev) => {
+        const idx = prev.findIndex((q) => q.id === question.id);
+        if (idx !== -1) {
+          const next = [...prev];
+          next[idx] = question;
+          return next;
+        }
+        return [...prev, question];
+      });
+    };
+
+    const onQuestionAnswered = (data: { questionId: string; answer: Answer }) => {
       setQuestions((prev) =>
-        prev.map((q) => (q.id === questionId ? { ...q, isApproved: true } : q))
+        prev.map((q) => {
+          if (q.id !== data.questionId) return q;
+          const idx = q.answers?.findIndex((a) => a.id === data.answer.id);
+          if (idx !== undefined && idx !== -1) {
+            const next = [...(q.answers ?? [])];
+            next[idx] = data.answer;
+            return { ...q, answers: next };
+          }
+          return { ...q, answers: [data.answer, ...(q.answers ?? [])] };
+        })
       );
     };
 
-    const onQuestionAnswered = ({ questionId, answer }: { questionId: string; answer: Answer }) => {
+    const onQuestionUpdated = (question: Question) => {
+      if (isClient && !question.isApproved) return;
       setQuestions((prev) =>
-        prev.map((q) =>
-          q.id === questionId ? { ...q, answers: [answer, ...(q.answers ?? [])] } : q
-        )
+        prev.map((q) => (q.id === question.id ? question : q))
       );
     };
 
-    const onQuestionUpdated = (q: Question) => {
-      setQuestions((prev) => prev.map((existing) => (existing.id === q.id ? q : existing)));
-    };
-
-    const onQuestionDeleted = ({ questionId }: { questionId: string }) => {
-      setQuestions((prev) => prev.filter((q) => q.id !== questionId));
+    const onQuestionDeleted = (data: { questionId: string }) => {
+      setQuestions((prev) => prev.filter((q) => q.id !== data.questionId));
     };
 
     socket.on("question_added", onQuestionAdded);
@@ -138,9 +160,8 @@ function QuestionsInner() {
       socket.off("question_answered", onQuestionAnswered);
       socket.off("question_updated", onQuestionUpdated);
       socket.off("question_deleted", onQuestionDeleted);
-      socket.emit("leave_room", roomKey);
     };
-  }, [socket, projectId]);
+  }, [socket, projectId, user?.role]);
 
   // Scroll + pulse on ?highlight=
   useEffect(() => {
@@ -180,18 +201,20 @@ function QuestionsInner() {
       const data = (await res.json()) as { data?: Answer; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Failed");
       setQuestions((prev) =>
-        prev.map((q) =>
-          q.id === qId ? { ...q, answers: [data.data!, ...(q.answers ?? [])] } : q
-        )
+        prev.map((q) => {
+          if (q.id !== qId) return q;
+          const idx = q.answers?.findIndex((a) => a.id === data.data!.id);
+          if (idx !== undefined && idx !== -1) {
+            const next = [...(q.answers ?? [])];
+            next[idx] = data.data!;
+            return { ...q, answers: next };
+          }
+          return { ...q, answers: [data.data!, ...(q.answers ?? [])] };
+        })
       );
       setAnswering(null);
       setAnswerTexts((prev) => ({ ...prev, [qId]: "" }));
       toast.success("Answer saved", { style: TOAST_STYLE });
-      socket?.emit("question_action", {
-        room: `project_questions:${projectId}`,
-        type: "question_answered",
-        payload: { questionId: qId, answer: data.data! },
-      });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed", { style: TOAST_ERROR_STYLE });
     } finally {
@@ -201,7 +224,7 @@ function QuestionsInner() {
 
   async function addQuestion() {
     if (newText.trim().length < 5) {
-      toast.error("Question too short (min 5 chars)", { style: TOAST_ERROR_STYLE });
+      toast.error("Question too short (minimum 5 characters)", { style: TOAST_ERROR_STYLE });
       return;
     }
     try {
@@ -213,16 +236,15 @@ function QuestionsInner() {
       const data = (await res.json()) as { data?: Question; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Failed");
       const newQ = { ...data.data!, answers: data.data!.answers ?? [] };
-      setQuestions((prev) => [...prev, newQ]);
+      // Optimistic update - add immediately
+      setQuestions((prev) => {
+        if (prev.some((q) => q.id === newQ.id)) return prev;
+        return [...prev, newQ];
+      });
       setShowAddForm(false);
       setNewText("");
       setNewPartOf("start");
       toast.success(newQ.isApproved ? "Question added" : "Submitted for approval", { style: TOAST_STYLE });
-      socket?.emit("question_action", {
-        room: `project_questions:${projectId}`,
-        type: "question_added",
-        payload: newQ,
-      });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed", { style: TOAST_ERROR_STYLE });
     }
@@ -245,11 +267,6 @@ function QuestionsInner() {
       setQuestions((prev) => prev.map((q) => (q.id === qId ? data.data! : q)));
       setEditing(null);
       toast.success("Question updated", { style: TOAST_STYLE });
-      socket?.emit("question_action", {
-        room: `project_questions:${projectId}`,
-        type: "question_updated",
-        payload: data.data!,
-      });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed", { style: TOAST_ERROR_STYLE });
     } finally {
@@ -258,7 +275,7 @@ function QuestionsInner() {
   }
 
   async function deleteQuestion(qId: string) {
-    if (!confirm("Delete this question?")) return;
+    setDeletingId(null);
     try {
       const res = await fetch(`/api/projects/${projectId}/questions/${qId}`, { method: "DELETE" });
       if (!res.ok) {
@@ -267,11 +284,6 @@ function QuestionsInner() {
       }
       setQuestions((prev) => prev.filter((q) => q.id !== qId));
       toast.success("Question deleted", { style: TOAST_STYLE });
-      socket?.emit("question_action", {
-        room: `project_questions:${projectId}`,
-        type: "question_deleted",
-        payload: { questionId: qId },
-      });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed", { style: TOAST_ERROR_STYLE });
     }
@@ -310,197 +322,6 @@ function QuestionsInner() {
     })),
   ];
 
-  function CreatorBadge({ q }: { q: Question }) {
-    if (isClient) return null;
-    if (q.isAiGenerated) {
-      return (
-        <span className="badge badge-ghost badge-xs gap-1">
-          <Sparkles className="w-2.5 h-2.5" />
-          AI
-        </span>
-      );
-    }
-    if (q.createdBy) {
-      return (
-        <span className="badge badge-ghost badge-xs gap-1">
-          <User className="w-2.5 h-2.5" />
-          {q.createdBy.name}
-        </span>
-      );
-    }
-    return null;
-  }
-
-  function QuestionCard({ q }: { q: Question }) {
-    const latestAnswer = (q.answers ?? [])[0];
-    const previousAnswers = (q.answers ?? []).slice(1);
-    const currentAnswerText = answerTexts[q.id] ?? "";
-    const isEditingThis = editing === q.id;
-
-    const canEdit = !isClient && (isManager || q.createdBy?.id === user?.id);
-    const canDelete = !isClient && (isManager || (!q.isApproved && q.createdBy?.id === user?.id));
-
-    return (
-      <div
-        ref={(el) => { questionRefs.current[q.id] = el; }}
-        className={`p-4 rounded-xl border transition-all ${
-          q.isApproved ? "bg-base-200 border-base-300" : "bg-base-300/50 border-warning/30"
-        }`}
-      >
-        {isEditingThis ? (
-          <div className="space-y-2">
-            <textarea
-              className="textarea textarea-bordered bg-base-100 text-sm w-full"
-              rows={3}
-              value={editText}
-              onChange={(e) => setEditText(e.target.value)}
-              autoFocus
-            />
-            <select
-              className="select select-bordered select-sm bg-base-100 w-full"
-              value={editPartOf}
-              onChange={(e) => setEditPartOf(e.target.value)}
-            >
-              {partOfOptions.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-            <div className="flex gap-2 justify-end">
-              <button className="btn btn-ghost btn-sm" onClick={() => setEditing(null)}>
-                Cancel
-              </button>
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={() => void saveEdit(q.id)}
-                disabled={editSaving}
-              >
-                {editSaving ? <span className="loading loading-spinner loading-xs" /> : <Check className="w-3.5 h-3.5" />}
-                Save
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-start justify-between gap-2 mb-3">
-            <p className="text-sm font-medium text-base-content flex-1">{q.text}</p>
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              {!q.isApproved &&
-                (isManager ? (
-                  <button className="btn btn-warning btn-xs" onClick={() => void approveQuestion(q.id)}>
-                    Approve
-                  </button>
-                ) : (
-                  <span className="badge badge-warning badge-sm">Pending Approval</span>
-                ))}
-              <CreatorBadge q={q} />
-              {canEdit && (
-                <button
-                  className="btn btn-ghost btn-xs btn-circle"
-                  title="Edit"
-                  onClick={() => {
-                    setEditing(q.id);
-                    setEditText(q.text);
-                    setEditPartOf(q.partOf);
-                  }}
-                >
-                  <Pencil className="w-3 h-3" />
-                </button>
-              )}
-              {canDelete && (
-                <button
-                  className="btn btn-ghost btn-xs btn-circle text-error"
-                  title="Delete"
-                  onClick={() => void deleteQuestion(q.id)}
-                >
-                  <Trash2 className="w-3 h-3" />
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {!isEditingThis && q.isApproved && (
-          <div className="space-y-2">
-            {latestAnswer ? (
-              <div className="bg-base-300 rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xs font-medium text-base-content">{latestAnswer.user.name}</span>
-                  <span className="text-xs text-base-content/40">{dayjs(latestAnswer.createdAt).fromNow()}</span>
-                </div>
-                <p className="text-sm text-base-content/80 whitespace-pre-wrap">{latestAnswer.content}</p>
-                {previousAnswers.length > 0 && (
-                  <button
-                    className="flex items-center gap-1 text-xs text-primary mt-2 hover:underline"
-                    onClick={() => setShowHistory(showHistory === q.id ? null : q.id)}
-                  >
-                    <History className="w-3 h-3" />
-                    {showHistory === q.id
-                      ? "Hide history"
-                      : `${previousAnswers.length} previous response${previousAnswers.length > 1 ? "s" : ""}`}
-                  </button>
-                )}
-                {showHistory === q.id && (
-                  <div className="mt-2 space-y-2 pl-3 border-l-2 border-base-content/10">
-                    {previousAnswers.map((a) => (
-                      <div key={a.id} className="text-xs">
-                        <span className="text-base-content/50">{a.user.name} · {dayjs(a.createdAt).fromNow()}</span>
-                        <p className="text-base-content/60 mt-0.5">{a.content}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-xs text-base-content/40 italic">No answer yet</p>
-            )}
-
-            {canAnswer &&
-              (answering === q.id ? (
-                <div className="space-y-2">
-                  <textarea
-                    className="textarea textarea-bordered bg-base-100 w-full text-sm"
-                    rows={3}
-                    value={currentAnswerText}
-                    onChange={(e) => handleAnswerTextChange(q.id, e.target.value)}
-                    placeholder="Type your answer..."
-                    autoFocus
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      className="btn btn-primary btn-sm gap-1"
-                      onClick={() => void submitAnswer(q.id)}
-                      disabled={submitting}
-                    >
-                      {submitting ? <span className="loading loading-spinner loading-xs" /> : <Check className="w-3.5 h-3.5" />}
-                      Save Answer
-                    </button>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => {
-                        setAnswering(null);
-                        setAnswerTexts((prev) => ({ ...prev, [q.id]: "" }));
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  className="btn btn-ghost btn-xs text-primary"
-                  onClick={() => {
-                    setAnswering(q.id);
-                    setAnswerTexts((prev) => ({ ...prev, [q.id]: latestAnswer?.content ?? "" }));
-                  }}
-                >
-                  {latestAnswer ? "Update Answer" : "Answer"}
-                </button>
-              ))}
-          </div>
-        )}
-      </div>
-    );
-  }
-
   return (
     <>
       <style>{`
@@ -511,7 +332,7 @@ function QuestionsInner() {
         .question-pulse { animation: q-pulse 0.8s ease-out 3; }
       `}</style>
 
-      <div className="max-w-2xl space-y-6">
+      <div className="max-w-2xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold text-base-content">Questions</h1>
@@ -560,7 +381,14 @@ function QuestionsInner() {
               )}
               <div className="flex gap-2 justify-end">
                 <button className="btn btn-ghost btn-sm" onClick={() => setShowAddForm(false)}>Cancel</button>
-                <button className="btn btn-primary btn-sm" onClick={() => void addQuestion()}>Submit</button>
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={() => void addQuestion()}
+                  disabled={newText.trim().length < 5}
+                  title={newText.trim().length < 5 ? "Question must be at least 5 characters" : ""}
+                >
+                  Submit
+                </button>
               </div>
             </div>
           </div>
@@ -570,7 +398,47 @@ function QuestionsInner() {
         {startQuestions.length > 0 && (
           <div className="space-y-2">
             <h2 className="text-xs font-semibold text-base-content/50 uppercase tracking-widest">Needed to Start</h2>
-            {startQuestions.map((q) => <QuestionCard key={q.id} q={q} />)}
+            {startQuestions.map((q) => (
+              <QuestionCard
+                key={q.id}
+                q={q}
+                isClient={isClient}
+                isManager={isManager}
+                currentUserId={user?.id}
+                isEditing={editing === q.id}
+                editText={editText}
+                editPartOf={editPartOf}
+                editSaving={editSaving}
+                isAnswering={answering === q.id}
+                answerText={answerTexts[q.id] ?? ""}
+                submitting={submitting}
+                isHistoryOpen={showHistory === q.id}
+                partOfOptions={partOfOptions}
+                onEditStart={() => {
+                  setEditing(q.id);
+                  setEditText(q.text);
+                  setEditPartOf(q.partOf);
+                }}
+                onEditTextChange={setEditText}
+                onEditPartOfChange={setEditPartOf}
+                onEditSave={() => void saveEdit(q.id)}
+                onEditCancel={() => setEditing(null)}
+                onDeleteClick={() => setDeletingId(q.id)}
+                onApprove={() => void approveQuestion(q.id)}
+                onAnswerStart={(latestContent) => {
+                  setAnswering(q.id);
+                  setAnswerTexts((prev) => ({ ...prev, [q.id]: latestContent }));
+                }}
+                onAnswerTextChange={(v) => handleAnswerTextChange(q.id, v)}
+                onAnswerSubmit={() => void submitAnswer(q.id)}
+                onAnswerCancel={() => {
+                  setAnswering(null);
+                  setAnswerTexts((prev) => ({ ...prev, [q.id]: "" }));
+                }}
+                onToggleHistory={() => setShowHistory((prev) => (prev === q.id ? null : q.id))}
+                setRef={(el) => { questionRefs.current[q.id] = el; }}
+              />
+            ))}
           </div>
         )}
 
@@ -583,7 +451,47 @@ function QuestionsInner() {
               <h2 className="text-xs font-semibold text-base-content/50 uppercase tracking-widest">
                 Milestone {m.order}: {m.title}
               </h2>
-              {qs.map((q) => <QuestionCard key={q.id} q={q} />)}
+              {qs.map((q) => (
+                <QuestionCard
+                  key={q.id}
+                  q={q}
+                  isClient={isClient}
+                  isManager={isManager}
+                  currentUserId={user?.id}
+                  isEditing={editing === q.id}
+                  editText={editText}
+                  editPartOf={editPartOf}
+                  editSaving={editSaving}
+                  isAnswering={answering === q.id}
+                  answerText={answerTexts[q.id] ?? ""}
+                  submitting={submitting}
+                  isHistoryOpen={showHistory === q.id}
+                  partOfOptions={partOfOptions}
+                  onEditStart={() => {
+                    setEditing(q.id);
+                    setEditText(q.text);
+                    setEditPartOf(q.partOf);
+                  }}
+                  onEditTextChange={setEditText}
+                  onEditPartOfChange={setEditPartOf}
+                  onEditSave={() => void saveEdit(q.id)}
+                  onEditCancel={() => setEditing(null)}
+                  onDeleteClick={() => setDeletingId(q.id)}
+                  onApprove={() => void approveQuestion(q.id)}
+                  onAnswerStart={(latestContent) => {
+                    setAnswering(q.id);
+                    setAnswerTexts((prev) => ({ ...prev, [q.id]: latestContent }));
+                  }}
+                  onAnswerTextChange={(v) => handleAnswerTextChange(q.id, v)}
+                  onAnswerSubmit={() => void submitAnswer(q.id)}
+                  onAnswerCancel={() => {
+                    setAnswering(null);
+                    setAnswerTexts((prev) => ({ ...prev, [q.id]: "" }));
+                  }}
+                  onToggleHistory={() => setShowHistory((prev) => (prev === q.id ? null : q.id))}
+                  setRef={(el) => { questionRefs.current[q.id] = el; }}
+                />
+              ))}
             </div>
           );
         })}
@@ -600,6 +508,27 @@ function QuestionsInner() {
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deletingId && (
+        <div className="modal modal-open">
+          <div className="modal-box">
+            <h3 className="font-bold text-lg">Delete Question?</h3>
+            <p className="py-4 text-base-content/70">
+              Are you sure you want to delete this question? This action cannot be undone.
+            </p>
+            <div className="modal-action">
+              <button className="btn btn-ghost" onClick={() => setDeletingId(null)}>
+                Cancel
+              </button>
+              <button className="btn btn-error" onClick={() => deleteQuestion(deletingId)}>
+                Delete
+              </button>
+            </div>
+          </div>
+          <div className="modal-backdrop" onClick={() => setDeletingId(null)} />
+        </div>
+      )}
     </>
   );
 }

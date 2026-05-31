@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parse } from "cookie";
-import type { AccessTokenPayload } from "@/lib/tokens";
-import { verifyAccessTokenEdge } from "@/lib/tokens-edge";
-import { tryRefreshSession } from "@/lib/middleware-refresh";
+import type { AccessTokenPayload } from "@/lib/auth/tokens";
+import { verifyAccessTokenEdge } from "@/lib/auth/tokens-edge";
+import { tryRefreshSession } from "@/lib/auth/middleware-refresh";
 
 const PUBLIC_ROUTES = [
   "/login", "/forgot-password", "/otp", "/reset-password",

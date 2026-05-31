@@ -2,8 +2,8 @@ import { config } from "dotenv";
 config();
 
 import { Server } from "@hocuspocus/server";
-import { prisma } from "./src/lib/prisma";
-import { verifyAccessToken } from "./src/lib/tokens";
+import { prisma } from "./src/lib/db/prisma";
+import { verifyAccessToken } from "./src/lib/auth/tokens";
 import * as Y from "yjs";
 
 const server = Server.configure({

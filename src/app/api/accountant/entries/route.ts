@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
-import { apiHandler, forbidden } from "@/lib/api-handler";
-import { logAction } from "@/lib/audit";
-import { uploadFile } from "@/lib/supabase-storage";
+import { prisma } from "@/lib/db/prisma";
+import { apiHandler, forbidden } from "@/lib/api/api-handler";
+import { logAction } from "@/lib/db/audit";
+import { uploadFile } from "@/lib/storage/supabase-storage";
 
 export const dynamic = "force-dynamic";
 

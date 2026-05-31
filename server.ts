@@ -4,9 +4,9 @@ import next from "next";
 import express from "express";
 import { Server as SocketIOServer } from "socket.io";
 import cookieParser from "cookie-parser";
-import { prisma } from "./src/lib/prisma";
-import { getLastActive } from "./src/lib/redis";
-import { sendPushNotification } from "./src/lib/push";
+import { prisma } from "./src/lib/db/prisma";
+import { getLastActive } from "./src/lib/db/redis";
+import { sendPushNotification } from "./src/lib/notifications/push";
 
 const dev = process.env.NODE_ENV !== "production";
 const app = next({ dev });
@@ -327,7 +327,7 @@ async function main() {
   global.io = io;
 
   // Socket.io namespaces
-  const { setupSocketServer } = await import("./src/lib/socket-server");
+  const { setupSocketServer } = await import("./src/lib/realtime/socket-server");
   setupSocketServer(io);
 
   expressApp.all("*", (req, res) => {

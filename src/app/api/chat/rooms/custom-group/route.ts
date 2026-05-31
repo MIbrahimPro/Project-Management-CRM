@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { apiHandler, forbidden } from "@/lib/api-handler";
-import { prisma } from "@/lib/prisma";
-import { logAction } from "@/lib/audit";
-import { getClientIp } from "@/lib/request-ip";
-import { requireUserManagement } from "@/lib/admin-user-management";
+import { apiHandler, forbidden } from "@/lib/api/api-handler";
+import { prisma } from "@/lib/db/prisma";
+import { logAction } from "@/lib/db/audit";
+import { getClientIp } from "@/lib/api/request-ip";
+import { requireUserManagement } from "@/lib/auth/admin-user-management";
 
 export const dynamic = "force-dynamic";
 

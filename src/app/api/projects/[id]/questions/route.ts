@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { apiHandler, forbidden } from "@/lib/api-handler";
-import { prisma } from "@/lib/prisma";
-import { sendNotification } from "@/lib/notify";
-import { logAction } from "@/lib/audit";
+import { apiHandler, forbidden } from "@/lib/api/api-handler";
+import { prisma } from "@/lib/db/prisma";
+import { logAction } from "@/lib/db/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -23,13 +22,19 @@ export const GET = apiHandler(
 
     const isClient = project?.clientId === userId;
     const isManager = (MANAGER_ROLES as readonly string[]).includes(role);
+    const isMember = !!member;
 
-    if (!member && !isClient && !isManager) forbidden();
+    if (!member && !isClient && !isManager) {
+      console.log("[Questions API] ACCESS DENIED - member:", !!member, "isClient:", isClient, "isManager:", isManager);
+      forbidden();
+    }
 
-    // Clients only see approved questions
+    // Clients only see approved questions; members and managers see all
     const where = isClient
       ? { projectId, isApproved: true }
       : { projectId };
+
+    console.log("[Questions API] userId:", userId, "role:", role, "isClient:", isClient, "isManager:", isManager, "isMember:", isMember);
 
     const questions = await prisma.projectQuestion.findMany({
       where,
@@ -45,6 +50,8 @@ export const GET = apiHandler(
         createdBy: { select: { id: true, name: true, role: true } },
       },
     });
+
+    console.log("[Questions API] total:", questions.length, "unapproved:", questions.filter(q => !q.isApproved).length);
 
     return NextResponse.json({ data: questions });
   }
@@ -65,8 +72,9 @@ export const POST = apiHandler(
 
     if (role === "CLIENT") forbidden();
 
-    const body = PostSchema.parse(await req.json());
     const isManager = (MANAGER_ROLES as readonly string[]).includes(role);
+
+    const body = PostSchema.parse(await req.json());
 
     const question = await prisma.projectQuestion.create({
       data: {
@@ -79,7 +87,10 @@ export const POST = apiHandler(
         createdById: userId,
       },
       include: {
-        answers: true,
+        answers: {
+          orderBy: { createdAt: "desc" },
+          include: { user: { select: { id: true, name: true, role: true } } },
+        },
         milestone: { select: { id: true, order: true, title: true } },
         createdBy: { select: { id: true, name: true, role: true } },
       },
@@ -87,26 +98,14 @@ export const POST = apiHandler(
 
     await logAction(userId, "QUESTION_CREATED", "ProjectQuestion", question.id);
 
-    // Notify managers if not already a manager (question needs approval)
-    if (!isManager) {
-      const managers = await prisma.projectMember.findMany({
-        where: {
-          projectId,
-          user: { role: { in: ["PROJECT_MANAGER", "ADMIN"] } },
-        },
-        select: { userId: true },
-      });
-      await Promise.all(
-        managers.map((m) =>
-          sendNotification(
-            m.userId,
-            "PROJECT_UPDATE",
-            "Question Needs Approval",
-            `A team member added a question awaiting your approval`,
-            `/projects/${projectId}/questions`
-          )
-        )
-      );
+    // Emit socket event for real-time updates
+    if (global.io) {
+      global.io
+        .of("/chat")
+        .to(`project:${projectId}`)
+        .emit("question_added", question);
+    } else {
+      console.error(`[Socket] FAILED to emit – global.io is NULL/UNDEFINED`);
     }
 
     return NextResponse.json({ data: question }, { status: 201 });

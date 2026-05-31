@@ -1,17 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { apiHandler, forbidden } from "@/lib/api-handler";
-import { prisma } from "@/lib/prisma";
-import { logAction } from "@/lib/audit";
-import { sendNotification } from "@/lib/notify";
-import { ensureProjectChatRooms } from "@/lib/project-chat";
+import { apiHandler, forbidden } from "@/lib/api/api-handler";
+import { prisma } from "@/lib/db/prisma";
+import { logAction } from "@/lib/db/audit";
+import { sendNotification } from "@/lib/notifications/notify";
+import { ensureProjectChatRooms } from "@/lib/chat/project-chat";
+import { getSignedUrl } from "@/lib/storage/supabase-storage";
+import type { Server } from "socket.io";
+
+declare global {
+  var io: Server;
+}
 
 export const dynamic = "force-dynamic";
 
 const CreateSchema = z.object({
   title: z.string().min(2).max(200),
   description: z.string().optional(),
-  clientId: z.string().optional(),
+  clientId: z.string().optional(), // Legacy single client (backward compat)
+  clientIds: z.array(z.string()).optional(), // New: multiple clients
   requestedById: z.string().optional(),
   requestId: z.string().optional(),
   price: z.number().positive().optional(),
@@ -58,8 +65,15 @@ export const GET = apiHandler(async (req: NextRequest) => {
   }
 
   if (role === "CLIENT") {
-    const projects = await prisma.project.findMany({
+    // Get projects where client is assigned via ProjectClient relationship
+    const projectClients = await prisma.projectClient.findMany({
       where: { clientId: userId },
+      select: { projectId: true },
+    });
+    const projectIds = projectClients.map((pc) => pc.projectId);
+
+    const projects = await prisma.project.findMany({
+      where: { id: { in: projectIds } },
       include: PROJECT_INCLUDE,
       orderBy: { updatedAt: "desc" },
     });
@@ -90,6 +104,7 @@ export const POST = apiHandler(async (req: NextRequest) => {
     title,
     description,
     clientId,
+    clientIds,
     requestedById,
     requestId,
     price,
@@ -98,85 +113,120 @@ export const POST = apiHandler(async (req: NextRequest) => {
     questions = [],
   } = CreateSchema.parse(body);
 
-  const project = await prisma.$transaction(async (tx) => {
-    const p = await tx.project.create({
-      data: {
-        title,
-        clientId: clientId ?? null,
-        requestedById: requestedById ?? null,
-        createdById: userId,
-        price: price ?? null,
-      },
-    });
+  // Normalize clients: use clientIds if provided, fallback to legacy clientId
+  const normalizedClientIds = clientIds?.length ? clientIds : clientId ? [clientId] : [];
 
-    // Persist project description for later display and AI context.
-    if (description?.trim()) {
-      await tx.aIContext.create({
+  const project = await prisma.$transaction(
+    async (tx) => {
+      const p = await tx.project.create({
         data: {
-          projectId: p.id,
-          taskId: null,
-          workspaceId: null,
-          content: description.trim(),
+          title,
+          clientId: normalizedClientIds[0] ?? null, // Legacy field: use first client
+          requestedById: requestedById ?? null,
+          createdById: userId,
+          price: price ?? null,
         },
       });
-    }
 
-    if (teamMemberIds.length > 0) {
-      await tx.projectMember.createMany({
-        data: teamMemberIds.map((memberId) => ({ projectId: p.id, userId: memberId })),
-        skipDuplicates: true,
-      });
-    }
-
-    if (milestones.length > 0) {
-      for (const m of milestones) {
-        const createdMilestone = await tx.milestone.create({
-          data: {
+      // Create project-client relationships for all clients
+      if (normalizedClientIds.length > 0) {
+        await tx.projectClient.createMany({
+          data: normalizedClientIds.map((cid) => ({
             projectId: p.id,
-            title: m.title,
-            content: m.content ?? "",
-            order: m.order,
-            status: "NOT_STARTED",
-          },
+            clientId: cid,
+          })),
+          skipDuplicates: true,
         });
+      }
 
-        await tx.document.create({
+      // Persist project description for later display and AI context.
+      if (description?.trim()) {
+        await tx.aIContext.create({
           data: {
             projectId: p.id,
-            milestoneId: createdMilestone.id,
-            title: `${m.title} Requirements`,
-            docType: "milestone_doc",
-            access: "INTERNAL",
-            createdById: userId,
-            initialContent: m.content || null,
+            taskId: null,
+            workspaceId: null,
+            content: description.trim(),
           },
         });
       }
-    }
 
-    if (questions.length > 0) {
-      await tx.projectQuestion.createMany({
-        data: questions.map((q) => ({
-          projectId: p.id,
-          text: q.text,
-          partOf: q.partOf ?? "",
-          isAiGenerated: true,
-          isApproved: false,
-          createdById: userId,
-        })),
-      });
-    }
+      if (teamMemberIds.length > 0) {
+        await tx.projectMember.createMany({
+          data: teamMemberIds.map((memberId) => ({ projectId: p.id, userId: memberId })),
+          skipDuplicates: true,
+        });
+      }
 
-    // Mark the client request as accepted if one was provided
-    if (requestId) {
-      await tx.clientProjectRequest.update({
-        where: { id: requestId },
-        data: { status: "ACCEPTED", projectId: p.id },
-      });
-    }
+      if (milestones.length > 0) {
+        for (const m of milestones) {
+          const createdMilestone = await tx.milestone.create({
+            data: {
+              projectId: p.id,
+              title: m.title,
+              content: m.content ?? "",
+              order: m.order,
+              status: "NOT_STARTED",
+            },
+          });
 
-    return p;
-  });
+          await tx.document.create({
+            data: {
+              projectId: p.id,
+              milestoneId: createdMilestone.id,
+              title: `${m.title} Requirements`,
+              docType: "milestone_doc",
+              access: "INTERNAL",
+              createdById: userId,
+              initialContent: m.content || null,
+            },
+          });
+        }
+      }
+
+      if (questions.length > 0) {
+        await tx.projectQuestion.createMany({
+          data: questions.map((q) => ({
+            projectId: p.id,
+            text: q.text,
+            partOf: q.partOf ?? "",
+            isAiGenerated: true,
+            isApproved: false,
+            createdById: userId,
+          })),
+        });
+      }
+
+      // Mark the client request as accepted if one was provided
+      if (requestId) {
+        const request = await tx.clientProjectRequest.update({
+          where: { id: requestId },
+          data: { status: "ACCEPTED", projectId: p.id },
+        });
+        // Add the client's initial PDF to assets
+        if (request.pdfUrl) {
+          const signedPdfUrl = await getSignedUrl(request.pdfUrl, 24 * 3600);
+          await tx.asset.create({
+            data: {
+              projectId: p.id,
+              name: request.title + " (Initial Request)",
+              fileUrl: signedPdfUrl,
+              fileType: "application/pdf",
+              fileSize: 0,
+              uploadedById: request.clientId,
+              isVisibleToClient: true,
+            },
+          });
+        }
+      }
+
+      return p;
+    },
+    {
+      maxWait: 10000, // 10s to acquire transaction
+      timeout: 60000, // 60s for transaction execution
+    }
+  );
 
   // Keep this out of the interactive transaction to avoid timeout (P2028)
   // when manager/member lookups are slow on larger datasets.
@@ -199,15 +249,24 @@ export const POST = apiHandler(async (req: NextRequest) => {
     );
   }
 
-  // Notify client if assigned
-  if (clientId) {
-    await sendNotification(
-      clientId,
-      "PROJECT_UPDATE",
-      "New Project Created",
-      `A new project **${title}** has been created for you`,
-      `/projects/${project.id}`
+  // Notify all clients if assigned
+  if (normalizedClientIds.length > 0) {
+    await Promise.all(
+      normalizedClientIds.map((cid) =>
+        sendNotification(
+          cid,
+          "PROJECT_UPDATE",
+          "New Project Created",
+          `A new project **${title}** has been created for you`,
+          `/projects/${project.id}`
+        )
+      )
     );
+  }
+
+  // Emit real-time update
+  if (global.io) {
+    global.io.of("/projects").emit("project_created", { project });
   }
 
   return NextResponse.json({ data: project }, { status: 201 });

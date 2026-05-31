@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
-import { prisma } from "@/lib/prisma";
-import { apiHandler } from "@/lib/api-handler";
-import { checkRateLimit } from "@/lib/redis";
-import { getClientIp, getRateLimitClientKey } from "@/lib/request-ip";
-import { generateAccessToken, generateRefreshToken, generateDeviceId, hashToken, parseUserAgentFamily, REFRESH_TOKEN_EXPIRY_SECONDS } from "@/lib/tokens";
-import { setAuthCookies } from "@/lib/auth-helpers";
-import { logAction } from "@/lib/audit";
+import { prisma } from "@/lib/db/prisma";
+import { apiHandler } from "@/lib/api/api-handler";
+import { checkRateLimit } from "@/lib/db/redis";
+import { getClientIp, getRateLimitClientKey } from "@/lib/api/request-ip";
+import { generateAccessToken, generateRefreshToken, generateDeviceId, hashToken, parseUserAgentFamily, REFRESH_TOKEN_EXPIRY_SECONDS } from "@/lib/auth/tokens";
+import { setAuthCookies } from "@/lib/auth/auth-helpers";
+import { logAction } from "@/lib/db/audit";
 
 export const dynamic = "force-dynamic";
 

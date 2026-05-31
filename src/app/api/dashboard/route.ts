@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { UserRole } from "@prisma/client";
-import { apiHandler, forbidden } from "@/lib/api-handler";
-import { fetchDashboardData } from "@/lib/dashboard-data";
+import { apiHandler, forbidden } from "@/lib/api/api-handler";
+import { fetchDashboardData } from "@/lib/dashboard/dashboard-data";
 
 export const dynamic = "force-dynamic";
 

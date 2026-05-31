@@ -9,10 +9,11 @@ const required = [
   "SUPABASE_URL",
   "SUPABASE_SERVICE_ROLE_KEY",
   "RESEND_API_KEY",
-  "GROQ_API_KEY",
   "VAPID_PUBLIC_KEY",
   "VAPID_PRIVATE_KEY",
   "VAPID_EMAIL",
+  // Note: AI provider key is required but can be GROQ_API_KEY, NVIDIA_API_KEY, or OPENROUTER_API_KEY
+  // The AI system will check for at least one of these at runtime
 ];
 
 for (const key of required) {

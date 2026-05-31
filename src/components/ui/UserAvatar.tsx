@@ -1,14 +1,17 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { User } from "lucide-react";
+import { User, Moon } from "lucide-react";
+import { useCachedAvatar } from "@/hooks/useCachedAvatar";
 
 interface UserAvatarProps {
   /** Display name for initials fallback. */
-  user: { name: string; profilePicUrl?: string | null };
+  user: { name: string; profilePicUrl?: string | null; timezone?: string | null };
   size?: 24 | 28 | 32 | 48 | 64 | 96 | 128;
   showPresence?: boolean;
   isOnline?: boolean;
+  /** Show moon icon when user is offline and it's night time in their timezone */
+  showMoon?: boolean;
 }
 
 const FALLBACK_COLORS = [
@@ -72,59 +75,59 @@ function extractPathFromSupabaseUrl(url: string): string | null {
   }
 }
 
+// Extract storage path from various URL formats or return as-is if already a path
+function getStoragePath(raw: string): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  // Already a private storage path
+  if (isPrivateStoragePath(trimmed)) {
+    return trimmed;
+  }
+
+  // Extract path from full Supabase URL
+  const extracted = extractPathFromSupabaseUrl(trimmed);
+  if (extracted) {
+    return extracted;
+  }
+
+  // Not a recognized format
+  return null;
+}
+
 /**
- * Resolves `profilePicUrl` for display.
+ * Resolves `profilePicUrl` for display with caching.
  */
 export function UserAvatar({
   user,
   size = 32,
   showPresence = false,
   isOnline = false,
+  showMoon = false,
 }: UserAvatarProps) {
   const [imgError, setImgError] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [resolvedSrc, setResolvedSrc] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  useEffect(() => {
-    setImgError(false);
-    const raw = user.profilePicUrl?.trim() ?? "";
-    if (!raw) {
-      setResolvedSrc(null);
-      return;
-    }
+  // Determine the storage path for caching
+  const raw = user.profilePicUrl?.trim() ?? "";
+  const storagePath = getStoragePath(raw);
 
-    let path = isPrivateStoragePath(raw) ? raw : extractPathFromSupabaseUrl(raw);
+  // Use cached avatar hook for private storage paths
+  const { url: cachedUrl } = useCachedAvatar(storagePath);
 
-    if (path) {
-      let cancelled = false;
-      setResolvedSrc(null);
-      fetch(`/api/storage/signed-url?path=${encodeURIComponent(path)}`)
-        .then((r) => {
-          if (!r.ok) throw new Error(String(r.status));
-          return r.json() as Promise<{ url?: string }>;
-        })
-        .then((d) => {
-          if (!cancelled && d.url) setResolvedSrc(d.url);
-        })
-        .catch(() => {
-          if (!cancelled) setResolvedSrc(null);
-        });
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    // Fallback: if it's an HTTP URL (but not a supabase one that needs signing), use as is.
-    if (isHttpUrl(raw)) {
-      setResolvedSrc(raw);
-    } else {
-      setResolvedSrc(null);
-    }
-  }, [user.profilePicUrl]);
+  // Determine final image source
+  let resolvedSrc: string | null = null;
+  if (storagePath && cachedUrl) {
+    resolvedSrc = cachedUrl;
+  } else if (isHttpUrl(raw) && !storagePath) {
+    // Public HTTP URL, use directly
+    resolvedSrc = raw;
+  }
 
   const hasProfilePic = Boolean(resolvedSrc) && !imgError;
   const px = `${size}px`;
@@ -147,7 +150,7 @@ export function UserAvatar({
     <div className="relative inline-block">
       {hasProfilePic ? (
         <img
-          src={resolvedSrc as string}
+          src={resolvedSrc!}
           alt={user.name}
           className="rounded-full object-cover"
           style={sizeStyle}
@@ -163,12 +166,14 @@ export function UserAvatar({
           </span>
         </div>
       )}
-      {showPresence && (
-        <span
-          className={`absolute bottom-0 right-0 w-3 h-3 border-2 border-base-100 rounded-full ${
-            isOnline ? "bg-success" : "bg-base-content/30"
-          }`}
-        />
+      {/* Online = green bubble, Offline at night = moon icon */}
+      {showPresence && isOnline && (
+        <span className="absolute bottom-0 right-0 w-3 h-3 border-2 border-base-100 rounded-full bg-success" />
+      )}
+      {showMoon && !isOnline && (
+        <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-base-200 rounded-full flex items-center justify-center border border-base-100">
+          <Moon className="w-2.5 h-2.5 text-info" />
+        </span>
       )}
     </div>
   );

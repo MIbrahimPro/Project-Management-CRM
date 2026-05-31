@@ -2,7 +2,7 @@
 
 import { ImageIcon, Video } from "lucide-react";
 import type { WorkspaceTask, WorkspaceMember } from "./types";
-import { blockNoteJsonToPlainText } from "@/lib/blocknote-plain-text";
+import { blockNoteJsonToPlainText } from "@/lib/blocknote/plain-text";
 import { useWorkspaceSignedUrl } from "./useWorkspaceSignedUrl";
 
 const STATUS_BADGE: Record<

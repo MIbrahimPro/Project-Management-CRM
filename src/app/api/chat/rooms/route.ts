@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { apiHandler, forbidden } from "@/lib/api-handler";
-import { prisma } from "@/lib/prisma";
-import { ensureProjectChatRooms } from "@/lib/project-chat";
+import { apiHandler, forbidden } from "@/lib/api/api-handler";
+import { prisma } from "@/lib/db/prisma";
+import { ensureProjectChatRooms } from "@/lib/chat/project-chat";
 
 export const dynamic = "force-dynamic";
 

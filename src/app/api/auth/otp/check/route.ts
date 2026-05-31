@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { apiHandler } from "@/lib/api-handler";
-import { getCookie } from "@/lib/auth-helpers";
+import { apiHandler } from "@/lib/api/api-handler";
+import { getCookie } from "@/lib/auth/auth-helpers";
 import jwt from "jsonwebtoken";
-import { REFRESH_TOKEN_SECRET } from "@/lib/tokens";
+import { REFRESH_TOKEN_SECRET } from "@/lib/auth/tokens";
 
 export const dynamic = "force-dynamic";
 

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { Server as SocketIOServer } from "socket.io";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
-import { apiHandler, forbidden } from "@/lib/api-handler";
-import { logAction } from "@/lib/audit";
-import { generateLiveKitToken, getLiveKitUrl } from "@/lib/livekit";
-import { sendNotification } from "@/lib/notify";
+import { prisma } from "@/lib/db/prisma";
+import { apiHandler, forbidden } from "@/lib/api/api-handler";
+import { logAction } from "@/lib/db/audit";
+import { generateLiveKitToken, getLiveKitUrl } from "@/lib/meetings/livekit";
+import { sendNotification } from "@/lib/notifications/notify";
 import { nanoid } from "nanoid";
 
 export const dynamic = "force-dynamic";

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { apiHandler, forbidden } from "@/lib/api-handler";
-import { getSignedUrl } from "@/lib/supabase-storage";
+import { prisma } from "@/lib/db/prisma";
+import { apiHandler, forbidden } from "@/lib/api/api-handler";
+import { getSignedUrl } from "@/lib/storage/supabase-storage";
 
 export const dynamic = "force-dynamic";
 

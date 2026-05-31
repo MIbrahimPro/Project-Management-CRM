@@ -14,12 +14,17 @@ import {
   Video,
   X,
   PlayCircle,
+  MoreVertical,
+  Archive,
+  AlertTriangle,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { UserAvatar } from "@/components/ui/UserAvatar";
+import { preloadAvatars } from "@/hooks/useCachedAvatar";
 import { usePresence } from "@/components/layout/PresenceProvider";
 import { TaskCard } from "@/components/tasks/TaskCard";
 import { Check } from "lucide-react";
+import { useSocket } from "@/hooks/useSocket";
 
 const StandaloneEditor = dynamic(
   () => import("@/components/documents/StandaloneEditor"),
@@ -30,6 +35,69 @@ const TOAST_STYLE = { background: "hsl(var(--b2))", color: "hsl(var(--bc))" };
 const TOAST_ERROR_STYLE = { background: "hsl(var(--b2))", color: "hsl(var(--er))" };
 
 type MilestoneStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED" | "BLOCKED";
+
+// Helper to check if it's night time (10 PM to 6 AM) in a given timezone
+function isNightTime(timezone: string | null | undefined): boolean {
+  if (!timezone) return false;
+  try {
+    const now = new Date();
+    const hour = parseInt(now.toLocaleString("en-US", { timeZone: timezone, hour: "2-digit", hour12: false }), 10);
+    return hour >= 22 || hour < 6;
+  } catch {
+    return false;
+  }
+}
+
+const MILESTONE_STATUS_CONFIG: Record<MilestoneStatus, { label: string; badgeClass: string; iconClass: string }> = {
+  NOT_STARTED: { label: "Not Started", badgeClass: "badge-ghost", iconClass: "text-base-content/20" },
+  IN_PROGRESS: { label: "In Progress", badgeClass: "badge-warning", iconClass: "text-warning" },
+  COMPLETED: { label: "Completed", badgeClass: "badge-success", iconClass: "text-success" },
+  BLOCKED: { label: "Blocked", badgeClass: "badge-error", iconClass: "text-error" },
+};
+
+function MilestoneStatusDropdown({
+  status,
+  onChange,
+}: {
+  status: MilestoneStatus;
+  onChange: (status: MilestoneStatus) => void;
+}) {
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const config = MILESTONE_STATUS_CONFIG[status];
+
+  return (
+    <div className="relative">
+      <button
+        className={`badge ${config.badgeClass} badge-sm cursor-pointer hover:opacity-80 transition-opacity`}
+        onClick={() => setDropdownOpen(!dropdownOpen)}
+      >
+        {config.label}
+      </button>
+      {dropdownOpen && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setDropdownOpen(false)} />
+          <div className="absolute right-0 top-full mt-1 w-40 bg-base-200 rounded-lg shadow-xl border border-base-300 z-50 overflow-hidden">
+            {(Object.keys(MILESTONE_STATUS_CONFIG) as MilestoneStatus[]).map((s) => (
+              <button
+                key={s}
+                className={`w-full text-left px-3 py-2 text-xs hover:bg-base-300 flex items-center gap-2 ${
+                  s === status ? "bg-base-300/50 font-medium" : ""
+                }`}
+                onClick={() => {
+                  onChange(s);
+                  setDropdownOpen(false);
+                }}
+              >
+                <Circle className={`w-3 h-3 ${MILESTONE_STATUS_CONFIG[s].iconClass}`} />
+                {MILESTONE_STATUS_CONFIG[s].label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 type Milestone = {
   id: string;
@@ -42,8 +110,10 @@ type Milestone = {
 type Member = {
   id: string;
   role: string;
-  user: { id: string; name: string; profilePicUrl: string | null; role: string };
+  user: { id: string; name: string; profilePicUrl: string | null; role: string; timezone?: string | null };
 };
+
+type Manager = { id: string; name: string; profilePicUrl: string | null; role: string };
 
 type Client = { id: string; name: string; profilePicUrl: string | null };
 
@@ -55,10 +125,12 @@ type Project = {
   projectDescription?: string;
   milestones: Milestone[];
   members: Member[];
+  managers: Manager[];
   client: Client | null;
   _count: { documents: number; questions: number };
   unreadMessages: number;
   unansweredQuestions: number;
+  pendingApprovalCount: number;
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -83,10 +155,35 @@ const ROLE_LABELS: Record<string, string> = {
 export default function ProjectDashboardPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const { socket: projectsSocket } = useSocket("/projects");
+  const { socket: chatSocket } = useSocket("/chat");
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<{ id: string; name: string; role: string } | null>(null);
   const presenceMap = usePresence();
+
+  // Listen for live question count updates
+  useEffect(() => {
+    if (!params?.id) return;
+
+    function onBadge(e: Event) {
+      const detail = (e as CustomEvent<{ key: string; count: number }>).detail;
+      if (detail?.key !== "questionsUnanswered") return;
+      // Update project state with new counts
+      setProject((prev) => {
+        if (!prev) return prev;
+        const isManager = currentUser?.role && ["ADMIN", "PROJECT_MANAGER"].includes(currentUser.role);
+        if (isManager) {
+          return { ...prev, pendingApprovalCount: detail.count };
+        } else {
+          return { ...prev, unansweredQuestions: detail.count };
+        }
+      });
+    }
+
+    window.addEventListener("sidebar-badge", onBadge as EventListener);
+    return () => window.removeEventListener("sidebar-badge", onBadge as EventListener);
+  }, [params?.id, currentUser?.role]);
 
   // Edit team modal
   const [editTeamOpen, setEditTeamOpen] = useState(false);
@@ -107,6 +204,32 @@ export default function ProjectDashboardPage() {
   const [taskAssignees, setTaskAssignees] = useState<string[]>([]);
   const [creatingTask, setCreatingTask] = useState(false);
 
+  // Project settings dropdown and modals
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [editProjectOpen, setEditProjectOpen] = useState(false);
+  const [editProjectTitle, setEditProjectTitle] = useState("");
+  const [editProjectDesc, setEditProjectDesc] = useState("");
+  const [savingProject, setSavingProject] = useState(false);
+  const [archiveModalOpen, setArchiveModalOpen] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+
+  // Real-time project updates via socket
+  useEffect(() => {
+    if (!projectsSocket || !params?.id) return;
+
+    const handleProjectUpdate = (data: { project: Project }) => {
+      if (data.project.id === params.id) {
+        setProject((prev) => (prev ? { ...prev, ...data.project } : data.project));
+      }
+    };
+
+    projectsSocket.on("project_updated", handleProjectUpdate);
+
+    return () => {
+      projectsSocket.off("project_updated", handleProjectUpdate);
+    };
+  }, [projectsSocket, params?.id]);
+
   useEffect(() => {
     if (!params?.id) return;
     Promise.all([
@@ -123,6 +246,14 @@ export default function ProjectDashboardPage() {
         setProject(projRes.data);
         setTasks(tasksRes.data ?? []);
         setCurrentUser(userRes.data);
+
+        // Preload all avatar images at once for better performance
+        const avatarUrls = [
+          projRes.data.client?.profilePicUrl,
+          ...projRes.data.members.map((m) => m.user.profilePicUrl),
+          ...projRes.data.managers.map((m) => m.profilePicUrl),
+        ];
+        preloadAvatars(avatarUrls);
       })
       .catch(() => {
         toast.error("Failed to load project", { style: TOAST_ERROR_STYLE });
@@ -133,13 +264,19 @@ export default function ProjectDashboardPage() {
       });
   }, [params?.id]);
 
+  // Roles that are automatically in all projects and can't be added/removed
+  const MANAGER_ROLES = ["ADMIN", "PROJECT_MANAGER", "SUPER_ADMIN"];
+
   async function openEditTeam() {
-    setEditMemberIds(new Set(project?.members.map((m) => m.user.id) ?? []));
+    // Filter out manager roles - they are automatically in all projects
+    const editableMembers = project?.members.filter((m) => !MANAGER_ROLES.includes(m.user.role)) ?? [];
+    setEditMemberIds(new Set(editableMembers.map((m) => m.user.id)));
     if (allUsers.length === 0) {
       try {
         const res = await fetch("/api/users");
         const data = (await res.json()) as { data: { id: string; name: string; role: string }[] };
-        setAllUsers((data.data ?? []).filter((u) => u.role !== "CLIENT"));
+        // Filter out CLIENT and manager roles - only regular team members can be added
+        setAllUsers((data.data ?? []).filter((u) => u.role !== "CLIENT" && !MANAGER_ROLES.includes(u.role)));
       } catch { /* ignore */ }
     }
     setEditTeamOpen(true);
@@ -306,6 +443,55 @@ export default function ProjectDashboardPage() {
     setShowTaskModal(true);
   }
 
+  // Settings menu functions
+  function openEditProjectModal() {
+    setEditProjectTitle(project?.title ?? "");
+    setEditProjectDesc(project?.projectDescription ?? "");
+    setSettingsOpen(false);
+    setEditProjectOpen(true);
+  }
+
+  async function saveProjectSettings() {
+    if (!project) return;
+    if (!editProjectTitle.trim()) {
+      toast.error("Title is required", { style: TOAST_ERROR_STYLE });
+      return;
+    }
+    setSavingProject(true);
+    try {
+      const res = await fetch(`/api/projects/${project.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: editProjectTitle.trim(), projectDescription: editProjectDesc.trim() || null }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      setProject((prev) => prev ? { ...prev, title: editProjectTitle.trim(), projectDescription: editProjectDesc.trim() || undefined } : prev);
+      setEditProjectOpen(false);
+      toast.success("Project updated", { style: TOAST_STYLE });
+    } catch {
+      toast.error("Failed to update project", { style: TOAST_ERROR_STYLE });
+    } finally {
+      setSavingProject(false);
+    }
+  }
+
+  async function archiveProject() {
+    if (!project) return;
+    setArchiving(true);
+    try {
+      const res = await fetch(`/api/projects/${project.id}/cancel`, {
+        method: "PATCH",
+      });
+      if (!res.ok) throw new Error("Failed");
+      toast.success("Project archived", { style: TOAST_STYLE });
+      router.push("/projects");
+    } catch {
+      toast.error("Failed to archive project", { style: TOAST_ERROR_STYLE });
+      setArchiving(false);
+      setArchiveModalOpen(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex justify-center py-16">
@@ -384,6 +570,45 @@ export default function ProjectDashboardPage() {
               </p>
             </div>
           )}
+          {/* Settings Menu (Manager only) */}
+          {isManager && (
+            <div className="relative">
+              <button
+                className="btn btn-ghost btn-circle btn-sm"
+                onClick={() => setSettingsOpen((s) => !s)}
+              >
+                <MoreVertical className="w-4 h-4" />
+              </button>
+              {settingsOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setSettingsOpen(false)}
+                  />
+                  <div className="absolute right-0 top-full mt-1 w-48 bg-base-200 rounded-lg shadow-xl border border-base-300 z-50 overflow-hidden">
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-base-300 flex items-center gap-2"
+                      onClick={openEditProjectModal}
+                    >
+                      <Pencil className="w-4 h-4" />
+                      Edit Details
+                    </button>
+                    <div className="h-px bg-base-300" />
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm text-error hover:bg-error/10 flex items-center gap-2"
+                      onClick={() => {
+                        setSettingsOpen(false);
+                        setArchiveModalOpen(true);
+                      }}
+                    >
+                      <Archive className="w-4 h-4" />
+                      Archive Project
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -431,10 +656,20 @@ export default function ProjectDashboardPage() {
           <div className="card-body p-4">
             <HelpCircle className="w-5 h-5 text-warning mb-1" />
             <p className="text-xs text-base-content/50">Questions</p>
-            {project.unansweredQuestions > 0 ? (
-              <span className="badge badge-warning badge-sm">{project.unansweredQuestions} pending</span>
+            {currentUser?.role === "CLIENT" ? (
+              // Clients see unanswered count
+              project.unansweredQuestions > 0 ? (
+                <span className="badge badge-warning badge-sm">{project.unansweredQuestions} unanswered</span>
+              ) : (
+                <p className="text-sm font-medium text-base-content">{project._count.questions}</p>
+              )
             ) : (
-              <p className="text-sm font-medium text-base-content">{project._count.questions}</p>
+              // Managers see pending approval count
+              project.pendingApprovalCount > 0 ? (
+                <span className="badge badge-warning badge-sm">{project.pendingApprovalCount} pending approval</span>
+              ) : (
+                <p className="text-sm font-medium text-base-content">{project._count.questions}</p>
+              )
             )}
           </div>
         </button>
@@ -507,16 +742,10 @@ export default function ProjectDashboardPage() {
                         {m.title}
                       </span>
                       {isManager ? (
-                        <select
-                          className="select select-xs select-bordered bg-base-100"
-                          value={m.status}
-                          onChange={(e) => void changeMilestoneStatus(m.id, e.target.value as MilestoneStatus)}
-                        >
-                          <option value="NOT_STARTED">Not Started</option>
-                          <option value="IN_PROGRESS">In Progress</option>
-                          <option value="BLOCKED">Blocked</option>
-                          <option value="COMPLETED">Done</option>
-                        </select>
+                        <MilestoneStatusDropdown
+                          status={m.status}
+                          onChange={(newStatus) => void changeMilestoneStatus(m.id, newStatus)}
+                        />
                       ) : (
                         <>
                           {m.status === "IN_PROGRESS" && (
@@ -621,9 +850,12 @@ export default function ProjectDashboardPage() {
             <div className="card-body p-4">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="font-semibold text-sm text-base-content">
-                  Team ({project.members.length})
+                  Team ({project.members.length + project.managers.length})
                   <span className="text-[10px] text-success font-medium ml-1.5">
-                    ({project.members.filter(m => presenceMap[m.user.id] === "online").length} online)
+                    ({[
+                      ...project.members.filter(m => presenceMap[m.user.id] === "online"),
+                      ...project.managers.filter(m => presenceMap[m.id] === "online"),
+                    ].length} online)
                   </span>
                 </h2>
                 {isManager && (
@@ -636,26 +868,63 @@ export default function ProjectDashboardPage() {
                   </button>
                 )}
               </div>
-              {project.members.length === 0 ? (
+              {(project.members.length === 0 && project.managers.length === 0) ? (
                 <p className="text-sm text-base-content/40">No members yet</p>
               ) : (
                 <div className="space-y-2">
-                  {project.members.map((m) => (
-                    <div key={m.id} className="flex items-center gap-2">
-                      <UserAvatar
-                        user={{ name: m.user.name, profilePicUrl: m.user.profilePicUrl }}
-                        size={28}
-                        showPresence
-                        isOnline={presenceMap[m.user.id] === "online"}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-base-content truncate">{m.user.name}</p>
-                        <p className="text-xs text-base-content/40">
-                          {ROLE_LABELS[m.user.role] ?? m.user.role}
-                        </p>
+                  {/* Managers first (implicit, non-editable) */}
+                  {project.managers.map((m) => {
+                    const isOnline = presenceMap[m.id] === "online";
+                    return (
+                      <div key={m.id} className="flex items-center gap-2">
+                        <UserAvatar
+                          user={{ name: m.name, profilePicUrl: m.profilePicUrl }}
+                          size={28}
+                          showPresence
+                          isOnline={isOnline}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-base-content truncate">{m.name}</p>
+                          <p className="text-xs text-base-content/40">
+                            {ROLE_LABELS[m.role] ?? m.role}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
+                  {/* Regular members */}
+                  {project.members.map((m) => {
+                    const isOnline = presenceMap[m.user.id] === "online";
+                    const showMoon = !isOnline && isNightTime(m.user.timezone);
+                    const localTime = m.user.timezone
+                      ? new Date().toLocaleTimeString("en-US", {
+                          timeZone: m.user.timezone,
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          hour12: true,
+                        })
+                      : null;
+                    return (
+                      <div key={m.id} className="flex items-center gap-2">
+                        <UserAvatar
+                          user={{ name: m.user.name, profilePicUrl: m.user.profilePicUrl, timezone: m.user.timezone }}
+                          size={28}
+                          showPresence
+                          isOnline={isOnline}
+                          showMoon={showMoon}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-base-content truncate">{m.user.name}</p>
+                          <p className="text-xs text-base-content/40">
+                            {ROLE_LABELS[m.user.role] ?? m.user.role}
+                            {!isOnline && localTime && (
+                              <span className="ml-1 text-[10px]">• {localTime}</span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -869,6 +1138,74 @@ export default function ProjectDashboardPage() {
         <div className="modal-backdrop" onClick={() => setShowTaskModal(false)} />
       </dialog>
 
+      {/* Edit Project Details Modal */}
+      <dialog className={`modal ${editProjectOpen ? "modal-open" : ""}`}>
+        <div className="modal-box bg-base-200 max-w-md">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-lg text-base-content">Edit Project Details</h3>
+            <button className="btn btn-ghost btn-sm btn-circle" onClick={() => setEditProjectOpen(false)}>
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="space-y-4">
+            <div className="form-control gap-1">
+              <label className="label py-0"><span className="label-text">Title</span></label>
+              <input
+                type="text"
+                className="input input-bordered bg-base-100"
+                value={editProjectTitle}
+                onChange={(e) => setEditProjectTitle(e.target.value)}
+                placeholder="Project title"
+              />
+            </div>
+            <div className="form-control gap-1">
+              <label className="label py-0"><span className="label-text">Description</span></label>
+              <textarea
+                className="textarea textarea-bordered bg-base-100 min-h-[120px]"
+                value={editProjectDesc}
+                onChange={(e) => setEditProjectDesc(e.target.value)}
+                placeholder="Project description..."
+              />
+            </div>
+          </div>
+          <div className="modal-action">
+            <button className="btn btn-ghost" onClick={() => setEditProjectOpen(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={() => void saveProjectSettings()} disabled={savingProject}>
+              {savingProject && <span className="loading loading-spinner loading-sm" />}
+              Save
+            </button>
+          </div>
+        </div>
+        <div className="modal-backdrop" onClick={() => setEditProjectOpen(false)} />
+      </dialog>
+
+      {/* Archive Project Confirmation Modal */}
+      <dialog className={`modal ${archiveModalOpen ? "modal-open" : ""}`}>
+        <div className="modal-box bg-base-200 max-w-md">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-full bg-error/10 flex items-center justify-center">
+              <AlertTriangle className="w-5 h-5 text-error" />
+            </div>
+            <div>
+              <h3 className="font-bold text-lg text-base-content">Archive Project</h3>
+              <p className="text-sm text-base-content/60">This action cannot be undone</p>
+            </div>
+          </div>
+          <p className="text-sm text-base-content/80 mb-6">
+            Archiving will mark this project as <span className="badge badge-error badge-sm">CANCELLED</span>. All team members and the client will lose access to active features. Are you sure?
+          </p>
+          <div className="modal-action">
+            <button className="btn btn-ghost" onClick={() => setArchiveModalOpen(false)} disabled={archiving}>
+              Cancel
+            </button>
+            <button className="btn btn-error" onClick={() => void archiveProject()} disabled={archiving}>
+              {archiving && <span className="loading loading-spinner loading-sm" />}
+              Archive Project
+            </button>
+          </div>
+        </div>
+        <div className="modal-backdrop" onClick={() => setArchiveModalOpen(false)} />
+      </dialog>
     </>
   );
 }

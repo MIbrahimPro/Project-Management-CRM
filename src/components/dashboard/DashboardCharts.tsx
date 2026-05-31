@@ -17,12 +17,12 @@ interface DashboardChartsProps {
 }
 
 const COLORS = [
-  "hsl(var(--p))",
-  "hsl(var(--s))",
-  "hsl(var(--a))",
-  "hsl(var(--n))",
-  "hsl(var(--er))",
-  "hsl(var(--su))",
+  "#3B82F6", // Blue
+  "#8B5CF6", // Purple
+  "#06B6D4", // Cyan
+  "#22C55E", // Green
+  "#F97316", // Orange
+  "#EC4899", // Pink
 ];
 
 export function DashboardCharts({ data }: DashboardChartsProps) {
@@ -38,14 +38,40 @@ export function DashboardCharts({ data }: DashboardChartsProps) {
           </h2>
           <div className="h-[300px] mt-4">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data.revenue}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--bc) / 0.1)" />
+<LineChart data={data.revenue}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                 <XAxis 
                   dataKey="name" 
-                  stroke="hsl(var(--bc) / 0.5)" 
+                  stroke="#9CA3AF" 
                   fontSize={12}
                   tickLine={false}
                   axisLine={false}
+                />
+                <YAxis 
+                  stroke="#9CA3AF" 
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(value) => `$${value}`}
+                />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: "hsl(var(--b1))", 
+                    borderColor: "hsl(var(--bc) / 0.2)",
+                    borderRadius: "0.5rem",
+                    fontSize: "12px",
+                    color: "hsl(var(--bc))"
+                  }}
+                  itemStyle={{ color: "hsl(var(--bc))" }}
+                  labelStyle={{ color: "hsl(var(--bc))" }}
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="revenue" 
+                  stroke="#3B82F6" 
+                  strokeWidth={3} 
+                  dot={{ r: 4, fill: "#3B82F6" }}
+                  activeDot={{ r: 6 }}
                 />
                 <YAxis 
                   stroke="hsl(var(--bc) / 0.5)" 
@@ -57,18 +83,20 @@ export function DashboardCharts({ data }: DashboardChartsProps) {
                 <Tooltip 
                   contentStyle={{ 
                     backgroundColor: "hsl(var(--b1))", 
-                    borderColor: "hsl(var(--bc) / 0.1)",
+                    borderColor: "hsl(var(--bc) / 0.2)",
                     borderRadius: "0.5rem",
-                    fontSize: "12px"
+                    fontSize: "12px",
+                    color: "hsl(var(--bc))"
                   }}
-                  itemStyle={{ color: "hsl(var(--p))" }}
+                  itemStyle={{ color: "hsl(var(--bc))" }}
+                  labelStyle={{ color: "hsl(var(--bc))" }}
                 />
                 <Line 
                   type="monotone" 
                   dataKey="revenue" 
-                  stroke="hsl(var(--p))" 
+                  stroke="#3B82F6" 
                   strokeWidth={3} 
-                  dot={{ r: 4, fill: "hsl(var(--p))" }}
+                  dot={{ r: 4, fill: "#3B82F6" }}
                   activeDot={{ r: 6 }}
                 />
               </LineChart>
@@ -86,16 +114,16 @@ export function DashboardCharts({ data }: DashboardChartsProps) {
           <div className="h-[300px] mt-4">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data.tasks}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--bc) / 0.1)" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                 <XAxis 
                   dataKey="name" 
-                  stroke="hsl(var(--bc) / 0.5)" 
+                  stroke="#9CA3AF" 
                   fontSize={12}
                   tickLine={false}
                   axisLine={false}
                 />
                 <YAxis 
-                  stroke="hsl(var(--bc) / 0.5)" 
+                  stroke="#9CA3AF" 
                   fontSize={12}
                   tickLine={false}
                   axisLine={false}
@@ -103,10 +131,13 @@ export function DashboardCharts({ data }: DashboardChartsProps) {
                 <Tooltip 
                   contentStyle={{ 
                     backgroundColor: "hsl(var(--b1))", 
-                    borderColor: "hsl(var(--bc) / 0.1)",
+                    borderColor: "hsl(var(--bc) / 0.2)",
                     borderRadius: "0.5rem",
-                    fontSize: "12px"
+                    fontSize: "12px",
+                    color: "hsl(var(--bc))"
                   }}
+                  itemStyle={{ color: "hsl(var(--bc))" }}
+                  labelStyle={{ color: "hsl(var(--bc))" }}
                 />
                 <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                   {data.tasks.map((entry, index) => (
@@ -142,12 +173,19 @@ export function DashboardCharts({ data }: DashboardChartsProps) {
                 <Tooltip 
                   contentStyle={{ 
                     backgroundColor: "hsl(var(--b1))", 
-                    borderColor: "hsl(var(--bc) / 0.1)",
+                    borderColor: "hsl(var(--bc) / 0.2)",
                     borderRadius: "0.5rem",
-                    fontSize: "12px"
+                    fontSize: "12px",
+                    color: "hsl(var(--bc))"
                   }}
+                  itemStyle={{ color: "hsl(var(--bc))" }}
+                  labelStyle={{ color: "hsl(var(--bc))" }}
                 />
-                <Legend iconType="circle" />
+                <Legend 
+                  iconType="circle" 
+                  wrapperStyle={{ color: "#9CA3AF" }}
+                  formatter={(value) => <span style={{ color: "#9CA3AF" }}>{value}</span>}
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -177,12 +215,19 @@ export function DashboardCharts({ data }: DashboardChartsProps) {
                 <Tooltip 
                   contentStyle={{ 
                     backgroundColor: "hsl(var(--b1))", 
-                    borderColor: "hsl(var(--bc) / 0.1)",
+                    borderColor: "hsl(var(--bc) / 0.2)",
                     borderRadius: "0.5rem",
-                    fontSize: "12px"
+                    fontSize: "12px",
+                    color: "hsl(var(--bc))"
                   }}
+                  itemStyle={{ color: "hsl(var(--bc))" }}
+                  labelStyle={{ color: "hsl(var(--bc))" }}
                 />
-                <Legend iconType="circle" />
+                <Legend 
+                  iconType="circle" 
+                  wrapperStyle={{ color: "#9CA3AF" }}
+                  formatter={(value) => <span style={{ color: "#9CA3AF" }}>{value}</span>}
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>

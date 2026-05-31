@@ -23,7 +23,7 @@ npm run bootstrap:users   # Upsert SUPER_ADMIN + ADMIN accounts from .env
 
 ## LiveKit Meetings
 
-Meetings are powered by LiveKit Cloud (Free Tier). Token generation is handled in `src/lib/livekit.ts` using `livekit-server-sdk` v2. The frontend uses `@livekit/react` and `livekit-client` in `src/components/meetings/LiveKitMeeting.tsx`. Recordings are handled via local MediaRecorder and uploaded to Supabase storage. Waitlists and invites are managed via meeting context (Project/Task/Workspace).
+Meetings are powered by LiveKit Cloud (Free Tier). Token generation is handled in `src/lib/meetings/livekit.ts` using `livekit-server-sdk` v2. The frontend uses `@livekit/react` and `livekit-client` in `src/components/meetings/LiveKitMeeting.tsx`. Recordings are handled via local MediaRecorder and uploaded to Supabase storage. Waitlists and invites are managed via meeting context (Project/Task/Workspace).
 
 ## Architecture
 
@@ -33,12 +33,12 @@ Meetings are powered by LiveKit Cloud (Free Tier). Token generation is handled i
 ### Request Lifecycle
 1. `src/middleware.ts` validates JWT from HttpOnly cookie, injects `x-user-id` and `x-user-role` headers
 2. API route handlers read userId/role from those headers (never re-parse the token)
-3. All handlers are wrapped with `src/lib/api-handler.ts`'s `apiHandler()` for consistent Zod validation, auth checks, and error responses
+3. All handlers are wrapped with `src/lib/api/api-handler.ts`'s `apiHandler()` for consistent Zod validation, auth checks, and error responses
 4. Multi-table mutations use Prisma `$transaction()`
-5. Mutations call `logAction()` from `src/lib/audit.ts` for compliance logging
+5. Mutations call `logAction()` from `src/lib/db/audit.ts` for compliance logging
 
 ### Real-time Layer
-Socket.io (port 3000) runs in `src/lib/socket-server.ts` with three namespaces: `/chat`, `/presence`, `/notifications`. Each namespace authenticates via the same JWT cookie as HTTP routes.
+Socket.io (port 3000) runs in `src/lib/realtime/socket-server.ts` with three namespaces: `/chat`, `/presence`, `/notifications`. Each namespace authenticates via the same JWT cookie as HTTP routes.
 
 A separate Hocuspocus process (port 3001) powers collaborative document editing via Yjs.
 
@@ -60,14 +60,14 @@ The `/control` route is exclusively for `SUPER_ADMIN`.
 `prisma/schema.prisma` (800+ lines, 30+ tables). Key tables: `User`, `Session`, `Project`, `Milestone`, `Task`, `ChatRoom`, `Message`, `Document`, `Attendance`, `HiringRequest`, `AccountEntry`, `WorkspaceTask`.
 
 ### File Storage
-Supabase Storage — private `devrolin-files` bucket. Helpers in `src/lib/supabase-storage.ts`. Files accessed via signed URLs.
+Supabase Storage — private `devrolin-files` bucket. Helpers in `src/lib/storage/supabase-storage.ts`. Files accessed via signed URLs.
 
 ### Notifications
 - `GET /api/notifications` — returns `{ notifications, groups, total, page, limit }`. Groups is `Record<string, Notification[]>` keyed by "Today", "Yesterday", or "MMMM D, YYYY". Paginated (default limit 50, max 100).
 - `POST /api/notifications/mark-all-read` — marks all unread for user and emits `has_unread: false` to Socket.io `/notifications` namespace.
 - `GET /api/notifications/has-unread` — returns `{ hasUnread: boolean, count: number }`.
-- `src/lib/notification-icons.ts` — `NOTIFICATION_ICONS` and `NOTIFICATION_COLORS` maps for all 11 `NotificationType` values.
-- `src/lib/format-notification-body.tsx` — `parseNotificationBody(body)` parses `**bold**` and `[text](url)` into React nodes. File is `.tsx` (not `.ts`) because it returns JSX.
+- `src/lib/notifications/notification-icons.ts` — `NOTIFICATION_ICONS` and `NOTIFICATION_COLORS` maps for all 11 `NotificationType` values.
+- `src/lib/notifications/format-notification-body.tsx` — `parseNotificationBody(body)` parses `**bold**` and `[text](url)` into React nodes. File is `.tsx` (not `.ts`) because it returns JSX.
 
 ### Projects
 - `GET /api/projects` — role-filtered: SUPER_ADMIN/ADMIN/PROJECT_MANAGER see all; CLIENT sees own (by `clientId`); others see projects they're a member of. Includes milestones (ordered by `order asc`), members with user info, and `client` relation directly (no N+1).
@@ -145,7 +145,7 @@ Supabase Storage — private `devrolin-files` bucket. Helpers in `src/lib/supaba
 - Avatar upload: `POST /api/users/me/avatar` (multipart), server runs `sharp` to convert to JPEG before storing. Returns `{ data: { profilePicUrl: signedUrl } }`.
 
 ### Notifications
-`src/lib/notify.ts` dispatches to all three channels simultaneously: in-app (DB), Web Push (`src/lib/push.ts`), and Socket.io emission.
+`src/lib/notifications/notify.ts` dispatches to all three channels simultaneously: in-app (DB), Web Push (`src/lib/notifications/push.ts`), and Socket.io emission.
 
 ## Code Conventions
 
@@ -217,7 +217,7 @@ Standard error codes: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `VALIDATION_ERR
 - `(public)/careers/[slug]/page.tsx` — public job page with hCaptcha. Uses `@hcaptcha/react-hcaptcha`. Deadline expiry guard. Success screen after submit.
 
 ### Meetings (LiveKit)
-- `src/lib/livekit.ts` — `generateLiveKitToken(roomName, user)` signs an AccessToken for LiveKit. Env: `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`.
+- `src/lib/meetings/livekit.ts` — `generateLiveKitToken(roomName, user)` signs an AccessToken for LiveKit. Env: `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`.
 - `POST /api/meetings/start` — body `{ title, projectId?, chatRoomId? }`. Creates `Meeting` + first `MeetingParticipant`, returns `{ meetingId, liveKitRoomId, url, token, isModerator }`. Clients (`CLIENT` role) are blocked.
 - `GET /api/meetings/[id]/join-token` — returns token for joining an existing meeting. Upserts `MeetingParticipant`. Returns 410 if `endedAt` is set. Supports guest join with `?guest=1&name=...`.
 - `src/components/meetings/LiveKitMeeting.tsx` — must be `dynamic(..., { ssr: false })`. Uses `@livekit/react` components. Fixed z-50 full-screen overlay. Props: `url`, `roomName` (liveKitRoomId), `token`, `displayName`, `isModerator`, `onClose`.
@@ -283,7 +283,7 @@ Standard error codes: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `VALIDATION_ERR
 - `src/components/tasks/TaskKanban.tsx` — `DndContext` + `useDroppable` columns + `useDraggable` cards + `DragOverlay`.
 
 ## AI Integration
-Uses Groq Chat Completions API (`src/lib/ai.ts`) with task-based model routing:
+Uses Groq Chat Completions API (`src/lib/ai/ai.ts`) with task-based model routing:
 - General/fast tasks: `openai/gpt-oss-20b`
 - Complex planning/long chat/document/hr: `openai/gpt-oss-120b`
 - Structured JSON output: `qwen/qwen3-32b`

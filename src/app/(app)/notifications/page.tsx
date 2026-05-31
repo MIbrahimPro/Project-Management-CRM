@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
-import { NOTIFICATION_COLORS, NOTIFICATION_ICONS } from "@/lib/notification-icons";
-import { parseNotificationBody } from "@/lib/format-notification-body";
+import { NOTIFICATION_COLORS, NOTIFICATION_ICONS } from "@/lib/notifications/notification-icons";
+import { parseNotificationBody } from "@/lib/notifications/format-notification-body";
 import type { NotificationType } from "@prisma/client";
 
 export const dynamic = "force-dynamic";

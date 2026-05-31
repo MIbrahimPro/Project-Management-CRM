@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { Copy, Eye, EyeOff, KeyRound, Plus, Trash2, X } from "lucide-react";
+import { Copy, Eye, EyeOff, KeyRound, Pencil, Plus, Trash2, X } from "lucide-react";
 import toast from "react-hot-toast";
+import { useSocket } from "@/hooks/useSocket";
 
 const TOAST_STYLE = { background: "hsl(var(--b2))", color: "hsl(var(--bc))" };
 const TOAST_ERROR_STYLE = { background: "hsl(var(--b2))", color: "hsl(var(--er))" };
@@ -25,12 +26,18 @@ export default function ProjectVaultPage() {
   const [loading, setLoading] = useState(true);
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
 
-  // New secret modal
+  // New / Edit secret modal
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [newKey, setNewKey] = useState("");
   const [newValue, setNewValue] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Delete confirmation modal
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const { socket } = useSocket("/chat");
 
   useEffect(() => {
     if (!projectId) return;
@@ -51,6 +58,51 @@ export default function ProjectVaultPage() {
     }
   }
 
+  // Socket listeners for live vault updates (server auto-joins project rooms)
+  useEffect(() => {
+    if (!socket || !projectId) return;
+
+    const onVaultSecretSaved = (secret: Secret) => {
+      setSecrets((prev) => {
+        const idx = prev.findIndex((s) => s.id === secret.id);
+        if (idx !== -1) {
+          const next = [...prev];
+          next[idx] = secret;
+          return next;
+        }
+        return [...prev, secret];
+      });
+    };
+
+    const onVaultSecretDeleted = (data: { secretId: string }) => {
+      setSecrets((prev) => prev.filter((s) => s.id !== data.secretId));
+    };
+
+    socket.on("vault_secret_saved", onVaultSecretSaved);
+    socket.on("vault_secret_deleted", onVaultSecretDeleted);
+
+    return () => {
+      socket.off("vault_secret_saved", onVaultSecretSaved);
+      socket.off("vault_secret_deleted", onVaultSecretDeleted);
+    };
+  }, [socket, projectId]);
+
+  function openNewModal() {
+    setEditingId(null);
+    setNewKey("");
+    setNewValue("");
+    setNewDesc("");
+    setModalOpen(true);
+  }
+
+  function openEditModal(secret: Secret) {
+    setEditingId(secret.id);
+    setNewKey(secret.key);
+    setNewValue(secret.value);
+    setNewDesc(secret.description ?? "");
+    setModalOpen(true);
+  }
+
   async function saveSecret() {
     if (!newKey.trim() || !newValue.trim()) return;
     setSaving(true);
@@ -64,13 +116,26 @@ export default function ProjectVaultPage() {
           description: newDesc.trim() || null,
         }),
       });
-      if (!res.ok) throw new Error("Failed");
-      toast.success("Secret saved", { style: TOAST_STYLE });
+      const data = (await res.json()) as { data?: Secret; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed");
+      // Optimistic update — will be broadcast to others via socket
+      if (data.data) {
+        setSecrets((prev) => {
+          const idx = prev.findIndex((s) => s.id === data.data!.id);
+          if (idx !== -1) {
+            const next = [...prev];
+            next[idx] = data.data!;
+            return next;
+          }
+          return [...prev, data.data!];
+        });
+      }
+      toast.success(editingId ? "Secret updated" : "Secret saved", { style: TOAST_STYLE });
       setModalOpen(false);
+      setEditingId(null);
       setNewKey("");
       setNewValue("");
       setNewDesc("");
-      void load();
     } catch {
       toast.error("Failed to save", { style: TOAST_ERROR_STYLE });
     } finally {
@@ -78,8 +143,10 @@ export default function ProjectVaultPage() {
     }
   }
 
-  async function deleteSecret(secretId: string) {
-    if (!confirm("Delete this secret?")) return;
+  async function confirmDelete() {
+    if (!deletingId) return;
+    const secretId = deletingId;
+    setDeletingId(null);
     try {
       const res = await fetch(`/api/projects/${projectId}/vault/${secretId}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed");
@@ -118,7 +185,7 @@ export default function ProjectVaultPage() {
               Do not put secret or API key anywhere else in the Project.
             </p>
           </div>
-          <button className="btn btn-primary btn-sm gap-2" onClick={() => setModalOpen(true)}>
+          <button className="btn btn-primary btn-sm gap-2" onClick={openNewModal}>
             <Plus className="w-4 h-4" />
             New Secret
           </button>
@@ -167,8 +234,15 @@ export default function ProjectVaultPage() {
                             <Copy className="w-3.5 h-3.5" />
                           </button>
                           <button
+                            className="btn btn-ghost btn-xs btn-square"
+                            onClick={() => openEditModal(s)}
+                            title="Edit"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
                             className="btn btn-ghost btn-xs btn-square text-error"
-                            onClick={() => void deleteSecret(s.id)}
+                            onClick={() => setDeletingId(s.id)}
                             title="Delete"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -187,11 +261,11 @@ export default function ProjectVaultPage() {
         )}
       </div>
 
-      {/* Modal */}
+      {/* Save / Edit Modal */}
       <dialog className={`modal ${modalOpen ? "modal-open" : ""}`}>
         <div className="modal-box bg-base-200 max-w-md">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-bold text-lg text-base-content">New Secret</h3>
+            <h3 className="font-bold text-lg text-base-content">{editingId ? "Edit Secret" : "New Secret"}</h3>
             <button className="btn btn-ghost btn-sm btn-circle" onClick={() => setModalOpen(false)}>
               <X className="w-4 h-4" />
             </button>
@@ -207,7 +281,8 @@ export default function ProjectVaultPage() {
                 placeholder="STRIPE_SECRET_KEY"
                 value={newKey}
                 onChange={(e) => setNewKey(e.target.value)}
-                autoFocus
+                disabled={!!editingId}
+                autoFocus={!editingId}
               />
             </div>
             <div className="form-control gap-1">
@@ -251,6 +326,27 @@ export default function ProjectVaultPage() {
         </div>
         <div className="modal-backdrop" onClick={() => setModalOpen(false)} />
       </dialog>
+
+      {/* Delete Confirmation Modal */}
+      {deletingId && (
+        <div className="modal modal-open">
+          <div className="modal-box">
+            <h3 className="font-bold text-lg">Delete Secret?</h3>
+            <p className="py-4 text-base-content/70">
+              Are you sure you want to delete this secret? This action cannot be undone.
+            </p>
+            <div className="modal-action">
+              <button className="btn btn-ghost" onClick={() => setDeletingId(null)}>
+                Cancel
+              </button>
+              <button className="btn btn-error" onClick={confirmDelete}>
+                Delete
+              </button>
+            </div>
+          </div>
+          <div className="modal-backdrop" onClick={() => setDeletingId(null)} />
+        </div>
+      )}
     </>
   );
 }

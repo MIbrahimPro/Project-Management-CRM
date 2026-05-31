@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { apiHandler } from "@/lib/api-handler";
-import { uploadFile } from "@/lib/supabase-storage";
+import { prisma } from "@/lib/db/prisma";
+import { apiHandler } from "@/lib/api/api-handler";
+import { uploadFile } from "@/lib/storage/supabase-storage";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 
@@ -146,7 +146,7 @@ export const POST = apiHandler(async (req: NextRequest) => {
   });
 
   // Notify user (Chunk 14.7)
-  const { sendNotification } = await import("@/lib/notify");
+  const { sendNotification } = await import("@/lib/notifications/notify");
   await sendNotification(
     userId,
     "GENERAL",

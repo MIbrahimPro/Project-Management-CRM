@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { apiHandler } from "@/lib/api-handler";
-import { checkRateLimit, blacklistToken, getBlacklistEntry, markTokenReused } from "@/lib/redis";
-import { generateAccessToken, generateRefreshToken, hashToken, parseUserAgentFamily, REFRESH_TOKEN_EXPIRY_SECONDS, ACCESS_TOKEN_EXPIRY_SECONDS } from "@/lib/tokens";
-import { setAuthCookies, clearAuthCookies, getCookie } from "@/lib/auth-helpers";
-import { logAction } from "@/lib/audit";
+import { prisma } from "@/lib/db/prisma";
+import { apiHandler } from "@/lib/api/api-handler";
+import { checkRateLimit, blacklistToken, getBlacklistEntry, markTokenReused } from "@/lib/db/redis";
+import { generateAccessToken, generateRefreshToken, hashToken, parseUserAgentFamily, REFRESH_TOKEN_EXPIRY_SECONDS, ACCESS_TOKEN_EXPIRY_SECONDS } from "@/lib/auth/tokens";
+import { setAuthCookies, clearAuthCookies, getCookie } from "@/lib/auth/auth-helpers";
+import { logAction } from "@/lib/db/audit";
 
 export const dynamic = "force-dynamic";
 

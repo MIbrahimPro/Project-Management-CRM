@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { apiHandler } from "@/lib/api-handler";
-import { prisma } from "@/lib/prisma";
-import { callAIRaw, type Message } from "@/lib/ai";
-import { PROJECT_AI_TOOLS, executeTool } from "@/lib/ai-tools";
-import { gatherFullProjectContext, formatContextForAI, ROLE_KNOWLEDGE_LEVELS } from "@/lib/ai-context";
+import { apiHandler } from "@/lib/api/api-handler";
+import { prisma } from "@/lib/db/prisma";
+import { callAIRaw, type Message } from "@/lib/ai/ai";
+import { PROJECT_AI_TOOLS, executeTool } from "@/lib/ai/ai-tools";
+import { gatherFullProjectContext, formatContextForAI, ROLE_KNOWLEDGE_LEVELS } from "@/lib/ai/ai-context";
 
 export const dynamic = "force-dynamic";
 
@@ -120,7 +120,7 @@ export const POST = apiHandler(async (req: NextRequest, ctx) => {
   const contextString = formatContextForAI(fullContext, knowledgeLevel);
 
   // Build enhanced system prompt with chain of thought instructions
-  const systemPrompt = `You are DevRolin AI, an intelligent project assistant with TOOL ACCESS and MEMORY.
+  const systemPrompt = `You are DevRolin AI, an intelligent project assistant with TOOL ACCESS, MEMORY, and DOCUMENT EDITING capabilities.
 
 === YOUR IDENTITY ===
 You are assisting: ${user?.name || "Unknown"} (${user?.role || "Unknown"})
@@ -135,22 +135,36 @@ You have access to these tools:
 - get_project_members: Team roster with roles
 - get_tasks / get_task_details: Task lists and full task details
 - get_documents / get_document_content: Document list and full content
+- propose_document_edit: Propose changes to ANY document (requires user confirmation)
+- get_assets: List all project files (images, code, documents, PDFs, etc.)
+- read_asset_content: Read text/code file contents from assets
 - get_questions: Client Q&A
 - get_recent_chat / get_chat_room_messages: Chat history with configurable limits
-- read_ai_context: Read your memory file
-- update_ai_context: IMPORTANT - Save key learnings to memory
+- read_ai_context: Read your memory file (ALWAYS DO THIS FIRST)
+- update_ai_context: Save key learnings to memory
 
-=== CHAIN OF THOUGHT PROTOCOL ===
-1. ANALYZE: What does the user need? What do you already know from context?
-2. FETCH: If you need more data (full document, more chat history, specific task), CALL THE TOOL.
-3. REASON: Process the information. Consider role-based knowledge limits.
-4. RESPOND: Provide helpful, accurate response.
-5. REMEMBER: If you learned something important (decisions, facts, context), CALL update_ai_context to save it.
+=== CRITICAL PROTOCOL - YOU MUST FOLLOW ===
+1. **ALWAYS START WITH MEMORY**: Call read_ai_context FIRST in every conversation. This tells you what you already know about the project.
+2. **ANALYZE**: What does the user need? What do you know from context + memory?
+3. **FETCH**: If you need more data (documents, tasks, chat), CALL THE TOOL.
+4. **REASON**: Process the information. Consider role-based knowledge limits.
+5. **RESPOND**: Provide helpful, accurate response.
+6. **UPDATE MEMORY**: If you learned something important, CALL update_ai_context to save it.
 
-=== MEMORY MANAGEMENT ===
-- At conversation start: Call read_ai_context to see what you know
-- During conversation: Call update_ai_context to save key facts
+=== DOCUMENT EDITING ===
+When user asks to edit/update/modify a document:
+1. Read the document content first using get_document_content
+2. Prepare the new content with your changes
+3. Call propose_document_edit with:
+   - documentId, title, explanation of changes
+   - currentContent (original), newContent (your version)
+4. Wait for user confirmation before applying
+
+=== MEMORY MANAGEMENT (MANDATORY) ===
+- **MUST CALL read_ai_context at start of EVERY conversation** - Never skip this
+- Call update_ai_context when you learn: decisions, facts, patterns, client preferences, technical choices
 - Format: "[YYYY-MM-DD] Learned: [fact/decision]"
+- Update frequently - better to save too much than forget important context
 
 === ROLE-BASED LIMITS ===
 Your user's role (${user?.role}) has knowledge level ${knowledgeLevel}/10:
@@ -163,6 +177,7 @@ Be proactive with tools. Never say "I don't have access" — you have tools to f
   // 4. Tool calling loop (max 5 iterations)
   let currentMessages = [...aiMessages];
   let finalResponse = "";
+  const pendingConfirmations: any[] = [];
 
   for (let i = 0; i < 5; i++) {
     const aiRes = await callAIRaw(currentMessages, {
@@ -182,6 +197,15 @@ Be proactive with tools. Never say "I don't have access" — you have tools to f
     if (aiRes.tool_calls && aiRes.tool_calls.length > 0) {
       for (const toolCall of aiRes.tool_calls) {
         const result = await executeTool(toolCall.function.name, JSON.parse(toolCall.function.arguments));
+        
+        // Check if this tool requires confirmation
+        if (result.requiresConfirmation) {
+          pendingConfirmations.push({
+            messageId: Math.random().toString(36).substring(2, 15),
+            ...result,
+          });
+        }
+        
         currentMessages.push({
           role: "tool",
           tool_call_id: toolCall.id,
@@ -207,5 +231,18 @@ Be proactive with tools. Never say "I don't have access" — you have tools to f
     });
   }
 
-  return NextResponse.json({ data: { content: finalResponse } });
+  // Return response with any pending confirmations
+  const response: any = { data: { content: finalResponse } };
+  if (pendingConfirmations.length > 0) {
+    response.pendingConfirmations = pendingConfirmations.map(p => ({
+      messageId: p.messageId,
+      type: p.actionType,
+      documentId: p.documentId,
+      title: p.title,
+      explanation: p.explanation,
+      proposedChanges: p.newContent.slice(0, 500) + (p.newContent.length > 500 ? "..." : ""),
+    }));
+  }
+
+  return NextResponse.json(response);
 });

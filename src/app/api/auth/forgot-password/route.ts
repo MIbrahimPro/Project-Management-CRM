@@ -3,11 +3,11 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { Resend } from "resend";
-import { prisma } from "@/lib/prisma";
-import { apiHandler } from "@/lib/api-handler";
-import { checkRateLimit } from "@/lib/redis";
-import { REFRESH_TOKEN_SECRET } from "@/lib/tokens";
-import { setFlowCookie } from "@/lib/auth-helpers";
+import { prisma } from "@/lib/db/prisma";
+import { apiHandler } from "@/lib/api/api-handler";
+import { checkRateLimit } from "@/lib/db/redis";
+import { REFRESH_TOKEN_SECRET } from "@/lib/auth/tokens";
+import { setFlowCookie } from "@/lib/auth/auth-helpers";
 
 export const dynamic = "force-dynamic";
 

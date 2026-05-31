@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { prisma } from "@/lib/prisma";
-import { apiHandler } from "@/lib/api-handler";
-import { checkRateLimit, incrementOtpAttempts, blockOtpUser, clearOtpAttempts, isOtpBlocked } from "@/lib/redis";
-import { REFRESH_TOKEN_SECRET } from "@/lib/tokens";
-import { getCookie, setFlowCookie, clearFlowCookies } from "@/lib/auth-helpers";
+import { prisma } from "@/lib/db/prisma";
+import { apiHandler } from "@/lib/api/api-handler";
+import { checkRateLimit, incrementOtpAttempts, blockOtpUser, clearOtpAttempts, isOtpBlocked } from "@/lib/db/redis";
+import { REFRESH_TOKEN_SECRET } from "@/lib/auth/tokens";
+import { getCookie, setFlowCookie, clearFlowCookies } from "@/lib/auth/auth-helpers";
 
 export const dynamic = "force-dynamic";
 

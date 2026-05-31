@@ -1,7 +1,7 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/prisma";
-import { verifyAccessToken } from "@/lib/tokens";
+import { prisma } from "@/lib/db/prisma";
+import { verifyAccessToken } from "@/lib/auth/tokens";
 import { ClientLayout } from "@/components/layout/ClientLayout";
 import { getSidebarItems } from "@/config/sidebar";
 
