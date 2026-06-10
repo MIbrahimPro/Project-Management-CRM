@@ -20,6 +20,7 @@ type DocumentEditorComponentProps = {
   currentUser: { id: string; name: string };
   readOnly?: boolean;
   initialContent?: string | null;
+  onEditorReady?: (handle: DocumentEditorHandle | null) => void;
 };
 
 const DocumentEditor = dynamic(() => import("@/components/documents/DocumentEditor"), {
@@ -63,6 +64,7 @@ export default function DocumentsPage() {
   const [titleDraft, setTitleDraft] = useState("");
   const [savingTitle, setSavingTitle] = useState(false);
   const editorRef = useRef<DocumentEditorHandle | null>(null);
+  const [editorHandle, setEditorHandle] = useState<DocumentEditorHandle | null>(null);
 
   // New doc modal
   const [newDocModal, setNewDocModal] = useState<{ milestoneId?: string; docType: string } | null>(null);
@@ -236,16 +238,10 @@ export default function DocumentsPage() {
 
   async function copyToClipboard() {
     try {
-      const editorEl = document.querySelector(".bn-editor");
-      if (!editorEl) return;
-      const html = editorEl.innerHTML;
-      const text = editorEl.textContent ?? "";
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          "text/html": new Blob([html], { type: "text/html" }),
-          "text/plain": new Blob([text], { type: "text/plain" }),
-        }),
-      ]);
+      const markdown = await editorHandle?.getMarkdown();
+      const text = markdown?.trim() || document.querySelector(".bn-editor")?.textContent?.trim() || "";
+      if (!text) return;
+      await navigator.clipboard.writeText(text);
       toast.success("Copied to clipboard", { style: TOAST_STYLE });
     } catch {
       toast.error("Copy failed", { style: TOAST_ERROR_STYLE });
@@ -253,7 +249,7 @@ export default function DocumentsPage() {
   }
 
   async function downloadMarkdown() {
-    const markdown = await editorRef.current?.getMarkdown();
+    const markdown = await editorHandle?.getMarkdown();
     const content = markdown?.trim() || document.querySelector(".bn-editor")?.textContent || "";
     const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -462,6 +458,7 @@ export default function DocumentsPage() {
                   currentUser={{ id: user?.id ?? "", name: user?.name ?? "User" }}
                   readOnly={!canEdit}
                   initialContent={selectedDoc.initialContent}
+                  onEditorReady={setEditorHandle}
                 />
               ) : (
                 <div className="flex items-center justify-center h-full">

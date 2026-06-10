@@ -132,7 +132,7 @@ export const GET = apiHandler(
 
       const roomMember = await prisma.chatRoomMember.findFirst({
         where: { room: { projectId: id }, userId },
-        select: { lastReadAt: true },
+        select: { joinedAt: true, lastReadAt: true },
       });
 
       // Different counts for clients vs managers
@@ -164,7 +164,10 @@ export const GET = apiHandler(
       where: {
         room: { projectId: id },
         senderId: { not: userId },
-        ...(roomMember?.lastReadAt ? { createdAt: { gt: roomMember.lastReadAt } } : {}),
+        deletedAt: null,
+        ...(roomMember
+          ? { createdAt: { gt: roomMember.lastReadAt ?? roomMember.joinedAt } }
+          : {}),
       },
     });
 

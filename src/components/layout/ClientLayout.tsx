@@ -50,6 +50,18 @@ interface ClientLayoutProps {
 
 function playNotificationSound() {
   try {
+    const audio = new Audio("/noti.mp3");
+    audio.volume = 0.75;
+    void audio.play().catch(() => {
+      playFallbackNotificationTone();
+    });
+  } catch {
+    playFallbackNotificationTone();
+  }
+}
+
+function playFallbackNotificationTone() {
+  try {
     const ctx = new AudioContext();
     const gain = ctx.createGain();
     gain.connect(ctx.destination);

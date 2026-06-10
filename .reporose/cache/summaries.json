@@ -495,49 +495,49 @@
       }
     },
     "src/app/(app)/projects/[id]/documents/page.tsx": {
-      "hash": "56018d275c77c7e9f92682ddfe0ecd1e",
+      "hash": "dc9ca34fc68f21c944cc088588c1ca43",
       "description": "Implements the UI module in `src/app/(app)/projects/[id]/documents/page.tsx` through the `DocumentsPage` component. Depends on packages `react`, `next/navigation`, `next/dynamic`, and `lucide-react` (+4 more). Has a default export plus named exports `DocumentsPage`. From the available code, it manages local component state, runs side effects in response to lifecycle or state changes, integrates with client-side routing, talks to external APIs or data clients, handles form input and submission flows, contains authentication-related logic or UI states, surfaces notifications or alerts, supports builder-style or interactive canvas behavior. Its main responsibility is rendering and coordinating the visible UI for this area of the application.",
       "functions": {
-        "func_045_01": {
+        "func_048_01": {
           "description": ""
         },
-        "func_045_02": {
+        "func_048_02": {
           "description": ""
         },
-        "func_045_03": {
+        "func_048_03": {
           "description": ""
         },
-        "func_045_04": {
+        "func_048_04": {
           "description": ""
         },
-        "func_045_05": {
+        "func_048_05": {
           "description": ""
         },
-        "func_045_06": {
+        "func_048_06": {
           "description": ""
         },
-        "func_045_07": {
+        "func_048_07": {
           "description": ""
         },
-        "func_045_08": {
+        "func_048_08": {
           "description": ""
         },
-        "func_045_09": {
+        "func_048_09": {
           "description": ""
         }
       }
     },
     "src/app/(app)/projects/[id]/layout.tsx": {
-      "hash": "1f831976f44b6c34bf480ebe3ffd1c9e",
+      "hash": "e767b049791c5c673f49458cc3509b6b",
       "description": "Implements the UI module in `src/app/(app)/projects/[id]/layout.tsx` through the `ProjectLayout` component. Depends on packages `react`, `next/link`, `next/navigation`, and `@/components/layout/ClientLayout` (+5 more). Has a default export plus named exports `ProjectLayout`. From the available code, it manages local component state, runs side effects in response to lifecycle or state changes, integrates with client-side routing, talks to external APIs or data clients, surfaces notifications or alerts. Its main responsibility is rendering and coordinating the visible UI for this area of the application.",
       "functions": {
-        "func_046_01": {
+        "func_049_01": {
           "description": ""
         },
-        "func_046_02": {
+        "func_049_02": {
           "description": ""
         },
-        "func_046_03": {
+        "func_049_03": {
           "description": ""
         }
       }
@@ -2637,25 +2637,25 @@
       }
     },
     "src/app/api/projects/[id]/documents/[docId]/route.ts": {
-      "hash": "b1824a07f3d4ffb77b7a2effecfe60e5",
+      "hash": "2ec8271b64deaf8357cb9bf2db8a662d",
       "description": "TypeScript API route handler at src/app/api/projects/[id]/documents/[docId]/route.ts. Depends on packages `next/server`, `zod`, `@/lib/api/api-handler`, and `@/lib/db/prisma` (+1 more). Exports `dynamic`, `GET`, `PATCH`, and `DELETE`. From the available code, it handles form input and submission flows. Its main responsibility appears to be coordinating implementation logic rather than only declaring types or constants.",
       "functions": {
-        "func_159_01": {
+        "func_170_01": {
           "description": ""
         },
-        "func_159_02": {
+        "func_170_02": {
           "description": ""
         },
-        "func_159_03": {
+        "func_170_03": {
           "description": ""
         },
-        "func_159_04": {
+        "func_170_04": {
           "description": ""
         },
-        "func_159_05": {
+        "func_170_05": {
           "description": ""
         },
-        "func_159_06": {
+        "func_170_06": {
           "description": ""
         }
       }
@@ -2670,25 +2670,25 @@
       }
     },
     "src/app/api/projects/[id]/documents/route.ts": {
-      "hash": "45074df9b153ad500a9cbcc4202f91a6",
+      "hash": "a69d1325bd62b0fe547b86381dea4555",
       "description": "TypeScript API route handler at src/app/api/projects/[id]/documents/route.ts. Depends on packages `next/server`, `zod`, `@/lib/api/api-handler`, and `@/lib/db/prisma` (+1 more). Exports `dynamic`, `GET`, and `POST`. From the available code, it handles form input and submission flows, contains authentication-related logic or UI states. Its main responsibility appears to be coordinating implementation logic rather than only declaring types or constants.",
       "functions": {
-        "func_161_01": {
+        "func_172_01": {
           "description": ""
         },
-        "func_161_02": {
+        "func_172_02": {
           "description": ""
         },
-        "func_161_03": {
+        "func_172_03": {
           "description": ""
         },
-        "func_161_04": {
+        "func_172_04": {
           "description": ""
         },
-        "func_161_05": {
+        "func_172_05": {
           "description": ""
         },
-        "func_161_06": {
+        "func_172_06": {
           "description": ""
         }
       }
@@ -2778,28 +2778,28 @@
       }
     },
     "src/app/api/projects/[id]/route.ts": {
-      "hash": "3e7383598f62475142bd1bbbf63387a6",
+      "hash": "3ee4ac828022580cfa89b3dc9c3ac17f",
       "description": "TypeScript API route handler at src/app/api/projects/[id]/route.ts. Depends on packages `next/server`, `zod`, `@/lib/api/api-handler`, and `@/lib/db/prisma` (+4 more). Exports `dynamic`, `GET`, and `PATCH`. From the available code, it talks to external APIs or data clients, handles form input and submission flows, renders user identity or profile visuals. Its main responsibility appears to be coordinating implementation logic rather than only declaring types or constants.",
       "functions": {
-        "func_176_01": {
+        "func_179_01": {
           "description": ""
         },
-        "func_176_02": {
+        "func_179_02": {
           "description": ""
         },
-        "func_176_03": {
+        "func_179_03": {
           "description": ""
         },
-        "func_176_04": {
+        "func_179_04": {
           "description": ""
         },
-        "func_176_05": {
+        "func_179_05": {
           "description": ""
         },
-        "func_176_06": {
+        "func_179_06": {
           "description": ""
         },
-        "func_176_07": {
+        "func_179_07": {
           "description": ""
         }
       }
@@ -3861,25 +3861,25 @@
       }
     },
     "src/components/documents/DocumentEditor.tsx": {
-      "hash": "4cac69e10001bc16dc6fa7d429b64915",
+      "hash": "41ed01376f504f5cdbac76e5d88c356a",
       "description": "Implements the UI module in `src/components/documents/DocumentEditor.tsx` through the `DocumentEditorHandle` component. Depends on packages `react`, `@hocuspocus/provider`, `@blocknote/react`, and `@/components/blocknote/SuggestionMenuControllerSolid` (+7 more). Has a default export plus named exports `DocumentEditorHandle`. From the available code, it manages local component state, runs side effects in response to lifecycle or state changes, talks to external APIs or data clients, handles form input and submission flows, contains authentication-related logic or UI states, supports builder-style or interactive canvas behavior. Its main responsibility is rendering and coordinating the visible UI for this area of the application.",
       "functions": {
-        "func_247_01": {
+        "func_250_01": {
           "description": ""
         },
-        "func_247_02": {
+        "func_250_02": {
           "description": ""
         },
-        "func_247_03": {
+        "func_250_03": {
           "description": ""
         },
-        "func_247_04": {
+        "func_250_04": {
           "description": ""
         },
-        "func_247_05": {
+        "func_250_05": {
           "description": ""
         },
-        "func_247_06": {
+        "func_250_06": {
           "description": ""
         }
       }
@@ -5178,34 +5178,37 @@
       }
     },
     "src/components/layout/ClientLayout.tsx": {
-      "hash": "f0897acc63ae9596822059382d941f96",
+      "hash": "8044b7e26a74c3ec4f935bbf9605de75",
       "description": "Implements the UI module in `src/components/layout/ClientLayout.tsx` through the `useSidebarOverride` component. It coordinates local modules such as `./Sidebar`, `./Navbar`, and `./PresenceProvider`. Depends on packages `react`, `next/navigation`, `@/components/ai/AISidebar`, and `@/components/attendance/AttendanceOvertimeModal` (+5 more) and local modules `./Sidebar`, `./Navbar`, and `./PresenceProvider`. Exports `useSidebarOverride`, `useUser`, and `ClientLayout`. From the available code, it manages local component state, runs side effects in response to lifecycle or state changes, consumes shared React context, talks to external APIs or data clients, handles form input and submission flows, contains authentication-related logic or UI states, surfaces notifications or alerts, renders user identity or profile visuals, includes responsive navigation or mobile menu behavior, supports builder-style or interactive canvas behavior, renders audio or voice-related interaction states. Its main responsibility is rendering and coordinating the visible UI for this area of the application.",
       "functions": {
-        "func_249_01": {
+        "func_252_01": {
           "description": ""
         },
-        "func_249_02": {
+        "func_252_02": {
           "description": ""
         },
-        "func_249_03": {
+        "func_252_03": {
           "description": ""
         },
-        "func_249_04": {
+        "func_252_04": {
           "description": ""
         },
-        "func_249_05": {
+        "func_252_05": {
           "description": ""
         },
-        "func_249_06": {
+        "func_252_06": {
           "description": ""
         },
-        "func_249_07": {
+        "func_252_07": {
           "description": ""
         },
-        "func_249_08": {
+        "func_252_08": {
           "description": ""
         },
-        "func_249_09": {
+        "func_252_09": {
+          "description": ""
+        },
+        "func_252_10": {
           "description": ""
         }
       }

@@ -10,12 +10,12 @@ import { useSocket } from "@/hooks/useSocket";
 import { SHOW_AI_FEATURES } from "@/config/features";
 import toast from "react-hot-toast";
 
-async function refreshChatBadge() {
+async function refreshProjectChatBadge(projectId: string) {
   try {
-    const res = await fetch("/api/chat/unseen");
+    const res = await fetch(`/api/projects/${projectId}`);
     if (!res.ok) return;
-    const json = (await res.json()) as { data?: { count: number } };
-    const count = json.data?.count ?? 0;
+    const json = (await res.json()) as { data?: { unreadMessages?: number } };
+    const count = json.data?.unreadMessages ?? 0;
     window.dispatchEvent(
       new CustomEvent("sidebar-badge", { detail: { key: "chatUnseen", count } }),
     );
@@ -195,7 +195,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
     };
 
     const onNewMessage = () => {
-      void refreshChatBadge();
+      void refreshProjectChatBadge(projectId);
     };
 
     socket.on("asset_created", onAssetCreated);
@@ -229,7 +229,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
   useEffect(() => {
     if (!projectId) return;
     refreshBadge();
-    void refreshChatBadge();
+    void refreshProjectChatBadge(projectId);
   }, [projectId, refreshBadge]);
 
   return (

@@ -38,6 +38,7 @@ interface DocumentEditorProps {
   currentUser: { id: string; name: string };
   readOnly?: boolean;
   initialContent?: string | null;
+  onEditorReady?: (handle: DocumentEditorHandle | null) => void;
 }
 
 export interface DocumentEditorHandle {
@@ -51,6 +52,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   currentUser,
   readOnly = false,
   initialContent,
+  onEditorReady,
 }: DocumentEditorProps, ref) {
   const [synced, setSynced] = useState(false);
   const [selectedText, setSelectedText] = useState("");
@@ -70,7 +72,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         token: collabToken,
         onSynced: () => setSynced(true),
       }),
-    [docId, projectId],
+    [collabToken, docId, projectId],
   );
 
   useEffect(() => {
@@ -78,6 +80,15 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
       provider.destroy();
     };
   }, [provider]);
+
+  useEffect(() => {
+    if (synced) return;
+    const timer = setTimeout(() => {
+      console.warn("[BlockNote] Collaboration sync timeout; showing editor for empty/new document.");
+      setSynced(true);
+    }, 6000);
+    return () => clearTimeout(timer);
+  }, [synced]);
 
   const userColor = hashToColor(currentUser.id);
 
@@ -103,9 +114,19 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     },
   });
 
-  useImperativeHandle(ref, () => ({
-    getMarkdown: () => editor.blocksToMarkdownLossy(editor.document),
-  }), [editor]);
+  const editorHandle = useMemo<DocumentEditorHandle>(
+    () => ({
+      getMarkdown: () => editor.blocksToMarkdownLossy(editor.document),
+    }),
+    [editor],
+  );
+
+  useImperativeHandle(ref, () => editorHandle, [editorHandle]);
+
+  useEffect(() => {
+    onEditorReady?.(editorHandle);
+    return () => onEditorReady?.(null);
+  }, [editorHandle, onEditorReady]);
 
   const getEditorPlainText = useCallback(() => {
     if (!wrapperRef.current) return "";

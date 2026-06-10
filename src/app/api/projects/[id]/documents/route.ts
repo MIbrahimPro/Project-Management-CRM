@@ -55,7 +55,13 @@ export const GET = apiHandler(
     let docs;
     if (isManager) {
       docs = await prisma.document.findMany({
-        where: { projectId },
+        where: {
+          projectId,
+          OR: [
+            { access: { not: "PRIVATE" } },
+            { access: "PRIVATE", ownerId: userId },
+          ],
+        },
         orderBy: { createdAt: "asc" },
         select: {
           id: true,

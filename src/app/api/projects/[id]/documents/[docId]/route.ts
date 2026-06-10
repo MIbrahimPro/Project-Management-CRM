@@ -61,9 +61,10 @@ export const PATCH = apiHandler(
 
     const doc = await prisma.document.findUnique({
       where: { id: docId },
-      select: { ownerId: true, docType: true, access: true },
+      select: { ownerId: true, docType: true, access: true, projectId: true },
     });
-    if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (!doc || doc.projectId !== projectId) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (doc.access === "PRIVATE" && doc.ownerId !== userId) forbidden();
 
     // Only managers can change access; owners or managers can change title
     const body = PatchSchema.parse(await req.json());
@@ -90,15 +91,18 @@ export const DELETE = apiHandler(
     if (!projectId || !docId)
       return NextResponse.json({ error: "Missing params" }, { status: 400 });
 
-    // Only managers can delete
-    if (!isManagerRole(role)) forbidden();
-
     const doc = await prisma.document.findUnique({
       where: { id: docId },
-      select: { docType: true, projectId: true },
+      select: { docType: true, projectId: true, access: true, ownerId: true },
     });
     if (!doc || doc.projectId !== projectId)
       return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    if (doc.access === "PRIVATE") {
+      if (doc.ownerId !== userId) forbidden();
+    } else if (!isManagerRole(role)) {
+      forbidden();
+    }
 
     // System docs cannot be deleted
     if (doc.docType === "requirements") {
