@@ -2,12 +2,27 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
-import { useParams, usePathname } from "next/navigation";
+import { useParams, usePathname, useRouter } from "next/navigation";
 import { useSidebarOverride, useUser } from "@/components/layout/ClientLayout";
 import { getProjectSidebarItems } from "@/config/sidebar";
 import FloatingAIChat from "@/components/projects/FloatingAIChat";
 import { useSocket } from "@/hooks/useSocket";
+import { SHOW_AI_FEATURES } from "@/config/features";
 import toast from "react-hot-toast";
+
+async function refreshChatBadge() {
+  try {
+    const res = await fetch("/api/chat/unseen");
+    if (!res.ok) return;
+    const json = (await res.json()) as { data?: { count: number } };
+    const count = json.data?.count ?? 0;
+    window.dispatchEvent(
+      new CustomEvent("sidebar-badge", { detail: { key: "chatUnseen", count } }),
+    );
+  } catch {
+    /* noop */
+  }
+}
 
 async function refreshQuestionBadge(projectId: string, isManager: boolean, isClient: boolean) {
   try {
@@ -35,6 +50,7 @@ async function refreshQuestionBadge(projectId: string, isManager: boolean, isCli
 export default function ProjectLayout({ children }: { children: React.ReactNode }) {
   const params = useParams<{ id: string }>();
   const pathname = usePathname();
+  const router = useRouter();
   const { setOverride } = useSidebarOverride();
   const user = useUser();
   const projectId = params?.id ?? null;
@@ -43,6 +59,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
   const isManager = user?.role ? ["ADMIN", "PROJECT_MANAGER"].includes(user.role) : false;
   const isClient = user?.role === "CLIENT";
   const { socket } = useSocket("/chat");
+  const { socket: projectsSocket } = useSocket("/projects");
 
   const refreshBadge = useCallback(() => {
     if (projectId) {
@@ -74,6 +91,31 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
       cancelled = true;
     };
   }, [projectId]);
+
+  useEffect(() => {
+    if (!projectsSocket || !projectId) return;
+
+    const onProjectUpdated = (data: { project?: { id: string; title?: string } }) => {
+      if (data.project?.id === projectId && data.project.title) {
+        setProjectTitle(data.project.title);
+      }
+    };
+    const onAccessRevoked = (data: { projectId: string }) => {
+      if (data.projectId === projectId) {
+        toast.error("Your access to this project was removed.", {
+          style: { background: "hsl(var(--b2))", color: "hsl(var(--er))" },
+        });
+        router.replace("/dashboard");
+      }
+    };
+
+    projectsSocket.on("project_updated", onProjectUpdated);
+    projectsSocket.on("project_access_revoked", onAccessRevoked);
+    return () => {
+      projectsSocket.off("project_updated", onProjectUpdated);
+      projectsSocket.off("project_access_revoked", onAccessRevoked);
+    };
+  }, [projectsSocket, projectId, router]);
 
   const sectionLabel = useMemo(() => {
     if (!projectId || !pathname) return "";
@@ -152,6 +194,10 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
       refreshBadge();
     };
 
+    const onNewMessage = () => {
+      void refreshChatBadge();
+    };
+
     socket.on("asset_created", onAssetCreated);
     socket.on("asset_updated", onAssetUpdated);
     socket.on("asset_deleted", onAssetDeleted);
@@ -162,6 +208,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
     socket.on("question_answered", onQuestionAnswered);
     socket.on("question_updated", onQuestionUpdated);
     socket.on("question_deleted", onQuestionDeleted);
+    socket.on("new_message", onNewMessage);
 
     return () => {
       socket.off("asset_created", onAssetCreated);
@@ -174,13 +221,15 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
       socket.off("question_answered", onQuestionAnswered);
       socket.off("question_updated", onQuestionUpdated);
       socket.off("question_deleted", onQuestionDeleted);
+      socket.off("new_message", onNewMessage);
     };
   }, [socket, projectId, pathname, refreshBadge]);
 
-  // Initial badge load
+  // Initial badge loads
   useEffect(() => {
     if (!projectId) return;
     refreshBadge();
+    void refreshChatBadge();
   }, [projectId, refreshBadge]);
 
   return (
@@ -199,7 +248,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
         </ul>
       </div>
       {children}
-      {projectId && user.role !== "CLIENT" && <FloatingAIChat projectId={projectId} />}
+      {SHOW_AI_FEATURES && projectId && user.role !== "CLIENT" && <FloatingAIChat projectId={projectId} />}
     </div>
   );
 }

@@ -10,6 +10,7 @@ const BUCKET = "devrolin-files";
 export type StoragePath =
   | `profile-pics/${string}`
   | `project-pdfs/${string}`
+  | `project-briefs/${string}`
   | `chat-media/${string}`
   | `cv-files/${string}`
   | `photos/${string}`

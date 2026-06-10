@@ -14,6 +14,7 @@ export const GET = apiHandler(async (req: NextRequest, ctx) => {
       id: true,
       title: true,
       content: true,
+      initialContent: true,
       updatedAt: true,
       project: {
         select: { title: true },

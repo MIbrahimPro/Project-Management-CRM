@@ -3,6 +3,11 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { apiHandler, forbidden } from "@/lib/api/api-handler";
 import { logAction } from "@/lib/db/audit";
+import type { Server } from "socket.io";
+
+declare global {
+  var io: Server;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -72,6 +77,7 @@ export const PATCH = apiHandler(async (req: NextRequest, ctx) => {
     select: {
       id: true,
       status: true,
+      projectId: true,
       createdById: true,
       assignees: { select: { userId: true, user: { select: { role: true } } } },
       chatRooms: { select: { id: true }, take: 1 },
@@ -130,10 +136,59 @@ export const PATCH = apiHandler(async (req: NextRequest, ctx) => {
     select: {
       id: true, title: true, description: true, status: true,
       completedAt: true, updatedAt: true,
-      assignees: { select: { user: { select: { id: true, name: true, profilePicUrl: true, role: true } } } },
+      assignees: {
+        select: {
+          userId: true,
+          user: { select: { id: true, name: true, profilePicUrl: true, role: true } },
+        },
+      },
     },
   });
 
+  const fullTask = await prisma.task.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      status: true,
+      completedAt: true,
+      projectId: true,
+      workspaceId: true,
+      createdById: true,
+      createdAt: true,
+      updatedAt: true,
+      createdBy: { select: { id: true, name: true, profilePicUrl: true } },
+      project: { select: { id: true, title: true } },
+      assignees: { select: { user: { select: { id: true, name: true, profilePicUrl: true, role: true } } } },
+      chatRooms: { select: { id: true, type: true }, take: 1 },
+    },
+  });
+
+  if (global.io && fullTask) {
+    const projectsNS = global.io.of("/projects");
+    const eventPayload = { task: fullTask };
+    if (fullTask.projectId) {
+      projectsNS.to(`project:${fullTask.projectId}`).emit("task_updated", eventPayload);
+      if (body.assigneeIds !== undefined) {
+        projectsNS.to(`project:${fullTask.projectId}`).emit("task_assignees_updated", eventPayload);
+      }
+    } else {
+      const userIds = new Set<string>([
+        task.createdById,
+        ...task.assignees.map((a) => a.userId),
+        ...fullTask.assignees.map((a) => a.user.id),
+      ]);
+      projectsNS.to("manager_projects").emit("task_updated", eventPayload);
+      for (const uid of Array.from(userIds)) {
+        projectsNS.to(`user:${uid}`).emit("task_updated", eventPayload);
+        if (body.assigneeIds !== undefined) {
+          projectsNS.to(`user:${uid}`).emit("task_assignees_updated", eventPayload);
+        }
+      }
+    }
+  }
+
   await logAction(userId, "TASK_UPDATED", "Task", id, { changes: Object.keys(updateData) });
-  return NextResponse.json({ data: updated });
+  return NextResponse.json({ data: fullTask ?? updated });
 });

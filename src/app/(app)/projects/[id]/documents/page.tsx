@@ -1,17 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ForwardRefExoticComponent, type RefAttributes } from "react";
 import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Check, ChevronDown, ClipboardCopy, Download, FileText, Pencil, Printer, Trash2, Upload, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { DocTree, type DocItem } from "@/components/documents/DocTree";
 import { ResizablePanel } from "@/components/ui/ResizablePanel";
+import type { DocumentEditorHandle } from "@/components/documents/DocumentEditor";
 
 const TOAST_STYLE = { background: "hsl(var(--b2))", color: "hsl(var(--bc))" };
 const TOAST_ERROR_STYLE = { background: "hsl(var(--b2))", color: "hsl(var(--er))" };
 
 // Dynamic import — BlockNote/Hocuspocus are browser-only
+type DocumentEditorComponentProps = {
+  docId: string;
+  projectId: string;
+  collabToken: string;
+  currentUser: { id: string; name: string };
+  readOnly?: boolean;
+  initialContent?: string | null;
+};
+
 const DocumentEditor = dynamic(() => import("@/components/documents/DocumentEditor"), {
   ssr: false,
   loading: () => (
@@ -19,7 +29,7 @@ const DocumentEditor = dynamic(() => import("@/components/documents/DocumentEdit
       <span className="loading loading-spinner loading-md text-primary" />
     </div>
   ),
-});
+}) as ForwardRefExoticComponent<DocumentEditorComponentProps & RefAttributes<DocumentEditorHandle>>;
 
 type Milestone = { id: string; order: number; title: string };
 type CurrentUser = { id: string; name: string; role: string };
@@ -52,6 +62,7 @@ export default function DocumentsPage() {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [savingTitle, setSavingTitle] = useState(false);
+  const editorRef = useRef<DocumentEditorHandle | null>(null);
 
   // New doc modal
   const [newDocModal, setNewDocModal] = useState<{ milestoneId?: string; docType: string } | null>(null);
@@ -241,11 +252,10 @@ export default function DocumentsPage() {
     }
   }
 
-  function downloadMarkdown() {
-    const editorEl = document.querySelector(".bn-editor");
-    if (!editorEl) return;
-    const text = editorEl.textContent ?? "";
-    const blob = new Blob([text], { type: "text/markdown" });
+  async function downloadMarkdown() {
+    const markdown = await editorRef.current?.getMarkdown();
+    const content = markdown?.trim() || document.querySelector(".bn-editor")?.textContent || "";
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -268,7 +278,7 @@ export default function DocumentsPage() {
 
   return (
     <>
-      <div className="flex h-[calc(100vh-8rem)] overflow-hidden rounded-xl border border-base-300">
+      <div className="document-print-root flex h-[calc(100vh-8rem)] overflow-hidden rounded-xl border border-base-300">
         {/* ── DocTree sidebar ── */}
         <ResizablePanel
           defaultWidth={240}
@@ -422,7 +432,7 @@ export default function DocumentsPage() {
                   </label>
                   <ul tabIndex={0} className="dropdown-content menu bg-base-200 border border-base-300 rounded-box w-40 shadow-lg z-50">
                     <li><button onClick={printDoc}><Printer className="w-3.5 h-3.5" /> Print / PDF</button></li>
-                    <li><button onClick={downloadMarkdown}><Download className="w-3.5 h-3.5" /> Markdown</button></li>
+                    <li><button onClick={() => void downloadMarkdown()}><Download className="w-3.5 h-3.5" /> Markdown</button></li>
                     <li><button onClick={() => void copyToClipboard()}><ClipboardCopy className="w-3.5 h-3.5" /> Copy</button></li>
                   </ul>
                 </div>
@@ -441,9 +451,10 @@ export default function DocumentsPage() {
             </div>
 
             {/* BlockNote editor */}
-            <div className="flex-1 overflow-y-auto bg-base-100">
+            <div className="document-print-editor flex-1 overflow-y-auto bg-base-100">
               {collabToken ? (
                 <DocumentEditor
+                  ref={editorRef}
                   key={selectedDoc.id}
                   docId={selectedDoc.id}
                   projectId={projectId}

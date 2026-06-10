@@ -107,6 +107,30 @@ export const POST = apiHandler(
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
+    // Detect MIME type from extension if browser didn't provide one
+    let resolvedFileType = fileType || "";
+    if (!resolvedFileType || resolvedFileType === "application/octet-stream") {
+      const ext = name.split(".").pop()?.toLowerCase();
+      if (ext === "md") resolvedFileType = "text/markdown";
+      else if (ext === "txt") resolvedFileType = "text/plain";
+      else if (ext === "docx") resolvedFileType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+      else if (ext === "pdf") resolvedFileType = "application/pdf";
+      else if (ext === "csv") resolvedFileType = "text/csv";
+      else if (ext === "json") resolvedFileType = "application/json";
+      else if (ext === "html" || ext === "htm") resolvedFileType = "text/html";
+      else if (ext === "css") resolvedFileType = "text/css";
+      else if (ext === "js") resolvedFileType = "application/javascript";
+      else if (ext === "ts") resolvedFileType = "application/typescript";
+      else if (ext === "svg") resolvedFileType = "image/svg+xml";
+      else if (ext === "png") resolvedFileType = "image/png";
+      else if (ext === "jpg" || ext === "jpeg") resolvedFileType = "image/jpeg";
+      else if (ext === "gif") resolvedFileType = "image/gif";
+      else if (ext === "webp") resolvedFileType = "image/webp";
+      else if (ext === "mp4") resolvedFileType = "video/mp4";
+      else if (ext === "mp3") resolvedFileType = "audio/mpeg";
+    }
+    if (!resolvedFileType) resolvedFileType = "application/octet-stream";
+
     // Client uploads are instantly visible to everyone
     // Team uploads are NOT visible to client by default
     const isVisibleToClient = isClient;
@@ -116,7 +140,7 @@ export const POST = apiHandler(
         projectId,
         name,
         fileUrl,
-        fileType: fileType || "application/octet-stream",
+        fileType: resolvedFileType,
         fileSize: fileSize || 0,
         uploadedById: userId,
         isVisibleToClient,

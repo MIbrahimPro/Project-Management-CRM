@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Zap, ArrowLeft, Mail } from "lucide-react";
+import { ArrowLeft, Mail } from "lucide-react";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -49,7 +49,7 @@ export default function ForgotPasswordPage() {
           </Link>
 
           <div className="flex justify-center">
-            <Zap className="w-8 h-8 text-primary" />
+            <img src="/logo.svg" alt="DevRolin" className="w-8 h-8" />
             <span className="text-2xl font-bold text-base-content ml-2">DevRolin</span>
           </div>
 

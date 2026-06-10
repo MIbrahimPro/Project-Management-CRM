@@ -2,11 +2,12 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { FileText, Inbox, Plus, Upload, X, Archive, FolderOpen, Clock, Download } from "lucide-react";
+import { FileText, Inbox, Plus, Upload, X, Archive, FolderOpen, Clock } from "lucide-react";
 import toast from "react-hot-toast";
 import { ProjectCard, type ProjectCardModel } from "@/components/projects/ProjectCard";
 import { ProjectRequestCard } from "@/components/projects/ProjectRequestCard";
 import { useSocket } from "@/hooks/useSocket";
+import ReactMarkdown from "react-markdown";
 import type { ProjectStatus } from "@prisma/client";
 
 type SettingsUser = {
@@ -46,6 +47,8 @@ export default function ProjectsPage() {
   const [newRequestModalOpen, setNewRequestModalOpen] = useState(false);
   const [pdfModalOpen, setPdfModalOpen] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [viewFileType, setViewFileType] = useState<"pdf" | "md" | "txt" | "docx">("pdf");
+  const [viewTextContent, setViewTextContent] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
 
   // New project request form (client only)
@@ -159,16 +162,19 @@ export default function ProjectsPage() {
     toast.success("Request dismissed", { style: TOAST_STYLE });
   }
 
-  async function viewPDF(requestId: string) {
+  async function viewFile(requestId: string) {
     setPdfLoading(true);
     setPdfModalOpen(true);
     try {
       const res = await fetch(`/api/projects/requests/${requestId}/pdf`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to load PDF");
-      setPdfUrl(data.data.url);
+      if (!res.ok) throw new Error(data.error || "Failed to load file");
+      const { url, fileType, textContent } = data.data;
+      setPdfUrl(url);
+      setViewFileType(fileType);
+      setViewTextContent(textContent);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load PDF", { style: TOAST_ERROR_STYLE });
+      toast.error(e instanceof Error ? e.message : "Failed to load file", { style: TOAST_ERROR_STYLE });
       setPdfModalOpen(false);
     } finally {
       setPdfLoading(false);
@@ -406,16 +412,16 @@ export default function ProjectsPage() {
                       {r.description}
                     </p>
 
-                    {/* PDF & Actions */}
+                    {/* File & Actions */}
                     <div className="flex items-center justify-between pt-2 border-t border-base-200">
                       <div>
                         {r.pdfUrl && (
                           <button
-                            onClick={() => void viewPDF(r.id)}
+                            onClick={() => void viewFile(r.id)}
                             className="btn btn-ghost btn-sm gap-1.5 text-primary"
                           >
                             <FileText className="w-4 h-4" />
-                            View PDF Brief
+                            View Brief
                           </button>
                         )}
                       </div>
@@ -493,8 +499,8 @@ export default function ProjectsPage() {
             <div className="form-control gap-1">
               <label className="label py-0">
                 <span className="label-text">
-                  Attach PDF{" "}
-                  <span className="text-base-content/40">(optional, max 5MB)</span>
+                  Attach Brief{" "}
+                  <span className="text-base-content/40">(optional, PDF/DOCX/MD/TXT, max 5MB)</span>
                 </span>
               </label>
               {reqPdf ? (
@@ -512,10 +518,10 @@ export default function ProjectsPage() {
               ) : (
                 <label className="border-2 border-dashed border-base-content/20 rounded-lg p-4 text-center cursor-pointer hover:border-primary/40 transition-colors">
                   <Upload className="w-6 h-6 text-base-content/30 mx-auto mb-1" />
-                  <span className="text-sm text-base-content/50">Click to attach PDF</span>
+                  <span className="text-sm text-base-content/50">Click to attach file</span>
                   <input
                     type="file"
-                    accept=".pdf,application/pdf"
+                    accept=".pdf,.docx,.md,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/markdown,text/plain"
                     className="hidden"
                     onChange={(e) => setReqPdf(e.target.files?.[0] ?? null)}
                   />
@@ -545,12 +551,13 @@ export default function ProjectsPage() {
       <dialog className={`modal ${pdfModalOpen ? "modal-open" : ""}`}>
         <div className="modal-box bg-base-200 max-w-5xl w-full h-[85vh] flex flex-col">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-bold text-lg text-base-content">PDF Viewer</h3>
+            <h3 className="font-bold text-lg text-base-content">File Viewer</h3>
             <button
               className="btn btn-ghost btn-sm btn-circle"
               onClick={() => {
                 setPdfModalOpen(false);
                 setPdfUrl(null);
+                setViewTextContent(null);
               }}
             >
               <X className="w-4 h-4" />
@@ -562,20 +569,32 @@ export default function ProjectsPage() {
               <div className="flex items-center justify-center h-full">
                 <span className="loading loading-spinner loading-lg text-primary" />
               </div>
-            ) : pdfUrl ? (
+            ) : viewFileType === "pdf" && pdfUrl ? (
               <iframe
                 src={pdfUrl}
                 className="w-full h-full"
-                title="PDF Viewer"
+                title="File Viewer"
               />
+            ) : viewTextContent ? (
+              <div className="p-6 overflow-y-auto h-full">
+                {viewFileType === "md" ? (
+                  <div className="prose prose-sm max-w-none text-base-content">
+                    <ReactMarkdown>{viewTextContent}</ReactMarkdown>
+                  </div>
+                ) : (
+                  <pre className="text-sm text-base-content whitespace-pre-wrap font-mono leading-relaxed">
+                    {viewTextContent}
+                  </pre>
+                )}
+              </div>
             ) : (
               <div className="flex items-center justify-center h-full text-base-content/50">
-                Failed to load PDF
+                Failed to load file
               </div>
             )}
           </div>
         </div>
-        <div className="modal-backdrop" onClick={() => { setPdfModalOpen(false); setPdfUrl(null); }} />
+        <div className="modal-backdrop" onClick={() => { setPdfModalOpen(false); setPdfUrl(null); setViewTextContent(null); }} />
       </dialog>
     </div>
   );

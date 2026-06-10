@@ -18,11 +18,11 @@ import {
   EyeOff,
   X,
   HardDrive,
-  ExternalLink,
   Loader2,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useSocket } from "@/hooks/useSocket";
+import ReactMarkdown from "react-markdown";
 
 interface Asset {
   id: string;
@@ -60,18 +60,35 @@ function getFileIcon(fileType: string) {
   return File;
 }
 
-function formatFileType(fileType: string): string {
-  if (!fileType || fileType === "application/octet-stream") return "File";
-  return fileType.split("/").pop()?.toUpperCase() || "File";
+function formatFileType(fileType: string, fileName?: string): string {
+  if (fileType && fileType !== "application/octet-stream") {
+    return fileType.split("/").pop()?.toUpperCase() || "File";
+  }
+  const ext = (fileName || "").split(".").pop()?.toUpperCase();
+  return ext || "File";
 }
 
-function canPreview(fileType: string): boolean {
-  return (
-    fileType.startsWith("image/") ||
-    fileType === "application/pdf" ||
-    fileType.startsWith("video/") ||
-    fileType.startsWith("audio/")
-  );
+function getProxyUrl(projectId: string, assetId: string): string {
+  return `/api/projects/${projectId}/assets/${assetId}/file`;
+}
+
+function canPreview(fileType: string, fileName?: string): boolean {
+  if (fileType.startsWith("image/")) return true;
+  if (fileType === "application/pdf") return true;
+  if (fileType.startsWith("video/")) return true;
+  if (fileType.startsWith("audio/")) return true;
+  if (isTextPreviewable(fileType, fileName)) return true;
+  return false;
+}
+
+function isTextPreviewable(fileType: string, fileName?: string): boolean {
+  if (fileType === "text/markdown" || fileType === "text/plain") return true;
+  if (fileType.startsWith("text/")) return true;
+  if (fileType.includes("wordprocessingml")) return true;
+  const name = fileName || "";
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".md") || lower.endsWith(".txt") || lower.endsWith(".docx")) return true;
+  return false;
 }
 
 export default function AssetsPage() {
@@ -84,18 +101,16 @@ export default function AssetsPage() {
   const [loading, setLoading] = useState(true);
   const [uploadQueue, setUploadQueue] = useState<{ file: File; status: "uploading" | "done" | "error" }[]>([]);
 
-  // Delete confirmation modal
   const [deletingAsset, setDeletingAsset] = useState<Asset | null>(null);
-
-  // Preview modal
   const [previewAsset, setPreviewAsset] = useState<Asset | null>(null);
+  const [previewText, setPreviewText] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isManager = user && MANAGER_ROLES.includes(user.role);
   const isClient = user?.role === "CLIENT";
 
-  // Load user and assets
   useEffect(() => {
     Promise.all([
       fetch("/api/users/me").then((r) => r.json()),
@@ -111,7 +126,6 @@ export default function AssetsPage() {
       .finally(() => setLoading(false));
   }, [projectId]);
 
-  // Socket listeners for live asset updates (server auto-joins project rooms)
   useEffect(() => {
     if (!socket || !projectId || !user) return;
 
@@ -127,7 +141,6 @@ export default function AssetsPage() {
 
     const handleAssetUpdated = (data: { asset: Asset }) => {
       if (isClientUser && !data.asset.isVisibleToClient) {
-        // Asset was hidden from client — remove it
         setAssets((prev) => prev.filter((a) => a.id !== data.asset.id));
         return;
       }
@@ -180,7 +193,6 @@ export default function AssetsPage() {
       if (!assetRes.ok) throw new Error("Failed to create asset");
       const assetData = (await assetRes.json()) as { data?: Asset };
 
-      // Immediately add to local state so uploader sees it without waiting for socket
       if (assetData.data) {
         setAssets((prev) => {
           if (prev.some((a) => a.id === assetData.data!.id)) return prev;
@@ -200,23 +212,49 @@ export default function AssetsPage() {
     }
   }
 
-  async function downloadFile(url: string, filename: string) {
+  async function downloadFile(asset: Asset) {
     try {
-      const res = await fetch(url);
+      const proxyUrl = getProxyUrl(projectId, asset.id);
+      const res = await fetch(proxyUrl);
       if (!res.ok) throw new Error("Download failed");
       const blob = await res.blob();
       const blobUrl = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = blobUrl;
-      a.download = filename;
+      a.download = asset.name;
       document.body.appendChild(a);
       a.click();
       a.remove();
       window.URL.revokeObjectURL(blobUrl);
-      toast.success(`Downloaded ${filename}`, { style: TOAST_STYLE });
+      toast.success(`Downloaded ${asset.name}`, { style: TOAST_STYLE });
     } catch {
       toast.error("Failed to download file", { style: TOAST_ERROR_STYLE });
     }
+  }
+
+  async function openPreview(asset: Asset) {
+    setPreviewAsset(asset);
+    setPreviewText(null);
+
+    if (isTextPreviewable(asset.fileType, asset.name)) {
+      setPreviewLoading(true);
+      try {
+        const res = await fetch(`/api/projects/${projectId}/assets/${asset.id}/text`);
+        if (res.ok) {
+          const data = (await res.json()) as { data?: { text: string; isMarkdown: boolean } };
+          if (data.data?.text) setPreviewText(data.data.text);
+        }
+      } catch {
+        // fallback
+      } finally {
+        setPreviewLoading(false);
+      }
+    }
+  }
+
+  function closePreview() {
+    setPreviewAsset(null);
+    setPreviewText(null);
   }
 
   async function handleFilesSelected(files: FileList | null) {
@@ -224,7 +262,6 @@ export default function AssetsPage() {
     const fileArray = Array.from(files);
     if (fileInputRef.current) fileInputRef.current.value = "";
     await Promise.all(fileArray.map((f) => uploadSingle(f)));
-    // Clean up done items after a delay
     setTimeout(() => {
       setUploadQueue((prev) => prev.filter((q) => q.status !== "done"));
     }, 3000);
@@ -232,7 +269,6 @@ export default function AssetsPage() {
 
   async function toggleVisibility(asset: Asset) {
     const nextStatus = !asset.isVisibleToClient;
-    // Optimistic update
     setAssets((prev) =>
       prev.map((a) =>
         a.id === asset.id ? { ...a, isVisibleToClient: nextStatus } : a
@@ -244,15 +280,12 @@ export default function AssetsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isVisibleToClient: nextStatus }),
       });
-
       if (!res.ok) throw new Error("Failed to update");
-
       toast.success(
         nextStatus ? "Asset now visible to client" : "Asset hidden from client",
         { style: TOAST_STYLE }
       );
     } catch {
-      // Rollback on error
       setAssets((prev) =>
         prev.map((a) =>
           a.id === asset.id ? { ...a, isVisibleToClient: asset.isVisibleToClient } : a
@@ -278,6 +311,75 @@ export default function AssetsPage() {
     }
   }
 
+  function renderPreview() {
+    if (!previewAsset) return null;
+    const proxyUrl = getProxyUrl(projectId, previewAsset.id);
+
+    if (previewText !== null) {
+      if (previewLoading) {
+        return (
+          <div className="flex items-center justify-center h-60">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          </div>
+        );
+      }
+      const isMd = previewAsset.name.toLowerCase().endsWith(".md") || previewAsset.fileType === "text/markdown";
+      return (
+        <div className="overflow-y-auto max-h-[60vh] p-6">
+          {isMd ? (
+            <div className="prose prose-sm max-w-none text-base-content">
+              <ReactMarkdown>{previewText}</ReactMarkdown>
+            </div>
+          ) : (
+            <pre className="text-sm text-base-content whitespace-pre-wrap font-mono leading-relaxed">
+              {previewText}
+            </pre>
+          )}
+        </div>
+      );
+    }
+
+    if (previewAsset.fileType.startsWith("image/")) {
+      return (
+        <img
+          src={proxyUrl}
+          alt={previewAsset.name}
+          className="max-w-full max-h-[60vh] object-contain"
+        />
+      );
+    }
+
+    if (previewAsset.fileType === "application/pdf") {
+      return (
+        <iframe
+          src={proxyUrl}
+          title={previewAsset.name}
+          className="w-full h-[60vh]"
+        />
+      );
+    }
+
+    if (previewAsset.fileType.startsWith("video/")) {
+      return (
+        <video
+          src={proxyUrl}
+          controls
+          className="max-w-full max-h-[60vh]"
+        />
+      );
+    }
+
+    if (previewAsset.fileType.startsWith("audio/")) {
+      return <audio src={proxyUrl} controls className="w-full px-8" />;
+    }
+
+    return (
+      <div className="flex items-center justify-center h-40 text-base-content/40">
+        <p>Preview not available</p>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex justify-center py-16">
@@ -288,7 +390,6 @@ export default function AssetsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-base-content flex items-center gap-2">
@@ -312,7 +413,6 @@ export default function AssetsPage() {
         </label>
       </div>
 
-      {/* Upload progress */}
       {uploadQueue.length > 0 && (
         <div className="card bg-base-200 border border-primary/30 shadow-sm">
           <div className="card-body p-4">
@@ -340,7 +440,6 @@ export default function AssetsPage() {
         </div>
       )}
 
-      {/* Assets grid */}
       {assets.length === 0 ? (
         <div className="card bg-base-200 border border-base-300 border-dashed">
           <div className="card-body items-center text-center text-base-content/50 py-12">
@@ -355,7 +454,7 @@ export default function AssetsPage() {
             const Icon = getFileIcon(asset.fileType);
             const isClientUploader = asset.uploadedBy.role === "CLIENT";
             const showVisibilityBadge = !isClient && !isClientUploader;
-            const previewable = canPreview(asset.fileType);
+            const previewable = canPreview(asset.fileType, asset.name);
 
             return (
               <div key={asset.id} className="card bg-base-200 border border-base-300 hover:border-primary/40 transition-colors">
@@ -365,7 +464,7 @@ export default function AssetsPage() {
                       {asset.fileType.startsWith("image/") ? (
                         <div className="w-14 h-14 rounded-lg bg-base-300 overflow-hidden">
                           <img
-                            src={asset.fileUrl}
+                            src={getProxyUrl(projectId, asset.id)}
                             alt={asset.name}
                             className="w-full h-full object-cover"
                             loading="lazy"
@@ -385,7 +484,7 @@ export default function AssetsPage() {
                         {asset.name}
                       </h3>
                       <p className="text-xs text-base-content/50">
-                        {formatFileType(asset.fileType)} • {asset.fileSizeFormatted}
+                        {formatFileType(asset.fileType, asset.name)} • {asset.fileSizeFormatted}
                       </p>
                       <p className="text-xs text-base-content/40 mt-1">
                         by {asset.uploadedBy.name}
@@ -411,30 +510,27 @@ export default function AssetsPage() {
                     </div>
                   </div>
 
-                  {/* Actions */}
                   <div className="flex items-center gap-2 mt-4 pt-3 border-t border-base-300">
                     {previewable ? (
                       <button
                         className="btn btn-ghost btn-xs gap-1 flex-1"
-                        onClick={() => setPreviewAsset(asset)}
+                        onClick={() => void openPreview(asset)}
                       >
                         <Eye className="w-3 h-3" />
                         Preview
                       </button>
                     ) : (
-                      <a
-                        href={asset.fileUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
                         className="btn btn-ghost btn-xs gap-1 flex-1"
+                        onClick={() => void downloadFile(asset)}
                       >
-                        <ExternalLink className="w-3 h-3" />
-                        Open
-                      </a>
+                        <Download className="w-3 h-3" />
+                        Download
+                      </button>
                     )}
                     <button
                       className="btn btn-ghost btn-xs gap-1 flex-1"
-                      onClick={() => void downloadFile(asset.fileUrl, asset.name)}
+                      onClick={() => void downloadFile(asset)}
                     >
                       <Download className="w-3 h-3" />
                       Download
@@ -454,13 +550,11 @@ export default function AssetsPage() {
                               <button onClick={() => toggleVisibility(asset)}>
                                 {asset.isVisibleToClient ? (
                                   <>
-                                    <EyeOff className="w-4 h-4" />
-                                    Hide from client
+                                    <EyeOff className="w-4 h-4" /> Hide from client
                                   </>
                                 ) : (
                                   <>
-                                    <Eye className="w-4 h-4" />
-                                    Make visible to client
+                                    <Eye className="w-4 h-4" /> Make visible to client
                                   </>
                                 )}
                               </button>
@@ -468,8 +562,7 @@ export default function AssetsPage() {
                           )}
                           <li>
                             <button onClick={() => setDeletingAsset(asset)} className="text-error">
-                              <Trash2 className="w-4 h-4" />
-                              Delete
+                              <Trash2 className="w-4 h-4" /> Delete
                             </button>
                           </li>
                         </ul>
@@ -493,7 +586,6 @@ export default function AssetsPage() {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
       {deletingAsset && (
         <div className="modal modal-open">
           <div className="modal-box">
@@ -502,62 +594,36 @@ export default function AssetsPage() {
               Are you sure you want to delete <strong>{deletingAsset.name}</strong>? This action cannot be undone.
             </p>
             <div className="modal-action">
-              <button className="btn btn-ghost" onClick={() => setDeletingAsset(null)}>
-                Cancel
-              </button>
-              <button className="btn btn-error" onClick={() => void confirmDelete()}>
-                Delete
-              </button>
+              <button className="btn btn-ghost" onClick={() => setDeletingAsset(null)}>Cancel</button>
+              <button className="btn btn-error" onClick={() => void confirmDelete()}>Delete</button>
             </div>
           </div>
           <div className="modal-backdrop" onClick={() => setDeletingAsset(null)} />
         </div>
       )}
 
-      {/* Preview Modal */}
       {previewAsset && (
         <div className="modal modal-open">
           <div className="modal-box max-w-4xl w-full bg-base-200">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-lg truncate pr-4">{previewAsset.name}</h3>
-              <button className="btn btn-ghost btn-sm btn-circle" onClick={() => setPreviewAsset(null)}>
+              <button className="btn btn-ghost btn-sm btn-circle" onClick={closePreview}>
                 <X className="w-4 h-4" />
               </button>
             </div>
             <div className="flex items-center justify-center bg-base-300 rounded-lg overflow-hidden min-h-[200px] max-h-[60vh]">
-              {previewAsset.fileType.startsWith("image/") ? (
-                <img
-                  src={previewAsset.fileUrl}
-                  alt={previewAsset.name}
-                  className="max-w-full max-h-[60vh] object-contain"
-                />
-              ) : previewAsset.fileType === "application/pdf" ? (
-                <iframe
-                  src={previewAsset.fileUrl}
-                  title={previewAsset.name}
-                  className="w-full h-[60vh]"
-                />
-              ) : previewAsset.fileType.startsWith("video/") ? (
-                <video
-                  src={previewAsset.fileUrl}
-                  controls
-                  className="max-w-full max-h-[60vh]"
-                />
-              ) : previewAsset.fileType.startsWith("audio/") ? (
-                <audio src={previewAsset.fileUrl} controls className="w-full px-8" />
-              ) : null}
+              {renderPreview()}
             </div>
             <div className="modal-action">
               <button
                 className="btn btn-primary btn-sm gap-2"
-                onClick={() => void downloadFile(previewAsset.fileUrl, previewAsset.name)}
+                onClick={() => void downloadFile(previewAsset)}
               >
-                <Download className="w-4 h-4" />
-                Download
+                <Download className="w-4 h-4" /> Download
               </button>
             </div>
           </div>
-          <div className="modal-backdrop" onClick={() => setPreviewAsset(null)} />
+          <div className="modal-backdrop" onClick={closePreview} />
         </div>
       )}
     </div>

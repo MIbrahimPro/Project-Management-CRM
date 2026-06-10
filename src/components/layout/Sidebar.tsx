@@ -7,7 +7,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ChevronDown,
-  Zap,
   LayoutDashboard,
   FolderKanban,
   MessageSquare,
@@ -128,7 +127,7 @@ export function Sidebar({
       <aside className="w-60 h-full bg-base-200 border-r border-base-300 flex flex-col">
         <div className="p-4 flex items-center gap-2">
           <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-            <Zap className="w-5 h-5 text-primary-content" />
+            <img src="/logo.svg" alt="DevRolin" className="w-5 h-5" />
           </div>
           <span className="text-lg font-bold text-base-content">DevRolin</span>
         </div>
@@ -151,7 +150,7 @@ export function Sidebar({
         {!collapsed && (
           <div className="flex items-center gap-2 flex-1">
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <Zap className="w-5 h-5 text-primary-content" />
+              <img src="/logo.svg" alt="DevRolin" className="w-5 h-5" />
             </div>
             <span className="text-lg font-bold text-base-content">DevRolin</span>
           </div>

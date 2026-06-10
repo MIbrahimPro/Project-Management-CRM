@@ -7,6 +7,8 @@ import Link from "next/link";
 import { ArrowLeft, CheckCircle2, Circle, Clock, Loader2, MessageSquare, PlayCircle, Plus, Save, Trash2, User, Video, X, Users } from "lucide-react";
 import toast from "react-hot-toast";
 import MeetingRecordingList from "@/components/meetings/MeetingRecordingList";
+import { SHOW_MEETINGS } from "@/config/features";
+import { useSocket } from "@/hooks/useSocket";
 import type { StandaloneEditorHandle } from "@/components/documents/StandaloneEditor";
 
 const MANAGER_ROLES = ["ADMIN", "PROJECT_MANAGER", "SUPER_ADMIN"];
@@ -71,7 +73,10 @@ export default function ProjectTaskDetailPage() {
   // Assignee management state
   const [assigneeModalOpen, setAssigneeModalOpen] = useState(false);
   const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
+  const [projectMembersLoading, setProjectMembersLoading] = useState(false);
+  const [projectMembersError, setProjectMembersError] = useState<string | null>(null);
   const [savingAssignees, setSavingAssignees] = useState(false);
+  const { socket: projectsSocket } = useSocket("/projects");
 
   const descRef = useRef<StandaloneEditorHandle>(null);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -81,6 +86,22 @@ export default function ProjectTaskDetailPage() {
     if (!taskId) return;
     void loadTask();
   }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!projectsSocket || !taskId) return;
+    const onTaskUpdated = (data: { task?: TaskDetail & { projectId?: string | null; updatedAt?: string } }) => {
+      if (data.task?.id !== taskId) return;
+      setTask((prev) => (prev ? { ...prev, ...data.task } : data.task ?? prev));
+      setStatus(data.task.status);
+      savedDescRef.current = data.task.description ?? null;
+    };
+    projectsSocket.on("task_updated", onTaskUpdated);
+    projectsSocket.on("task_assignees_updated", onTaskUpdated);
+    return () => {
+      projectsSocket.off("task_updated", onTaskUpdated);
+      projectsSocket.off("task_assignees_updated", onTaskUpdated);
+    };
+  }, [projectsSocket, taskId]);
 
   async function loadTask() {
     setLoading(true);
@@ -116,13 +137,19 @@ export default function ProjectTaskDetailPage() {
   }
 
   async function loadProjectMembers() {
+    setProjectMembersLoading(true);
+    setProjectMembersError(null);
     try {
       const res = await fetch(`/api/projects/${projectId}/members`);
       if (!res.ok) throw new Error("Failed to load members");
       const json = (await res.json()) as { data: ProjectMember[] };
       setProjectMembers(json.data ?? []);
-    } catch {
-      toast.error("Failed to load project members", { style: TOAST_ERROR_STYLE });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load project members";
+      setProjectMembersError(message);
+      toast.error(message, { style: TOAST_ERROR_STYLE });
+    } finally {
+      setProjectMembersLoading(false);
     }
   }
 
@@ -282,6 +309,8 @@ export default function ProjectTaskDetailPage() {
           <span className="text-sm text-base-content/60 truncate max-w-[300px]">{task.title}</span>
         </div>
         <div className="flex items-center gap-2">
+          {SHOW_MEETINGS && (
+          <>
           <button
             className="btn btn-ghost btn-sm gap-2"
             onClick={() => setRecordingsOpen(true)}
@@ -297,6 +326,8 @@ export default function ProjectTaskDetailPage() {
             {startingMeeting ? <span className="loading loading-spinner loading-xs" /> : <Video className="w-4 h-4" />}
             Start Meeting
           </button>
+          </>
+          )}
           <Link href={`/projects/${projectId}/chat`} className="btn btn-ghost btn-sm gap-1">
             <MessageSquare className="w-4 h-4" />
             Team Chat
@@ -404,7 +435,7 @@ export default function ProjectTaskDetailPage() {
         </div>
       </div>
     </div>
-      {recordingsOpen && (
+      {SHOW_MEETINGS && recordingsOpen && (
         <div className="modal modal-open">
           <div className="modal-box max-w-4xl bg-base-100">
             <div className="flex items-center justify-between mb-6">
@@ -434,10 +465,18 @@ export default function ProjectTaskDetailPage() {
               </button>
             </div>
             <div className="space-y-2 max-h-80 overflow-y-auto">
-              {projectMembers.length === 0 ? (
+              {projectMembersLoading ? (
                 <div className="text-center py-4 text-base-content/40">
                   <span className="loading loading-spinner loading-sm" />
                   <p className="text-sm mt-2">Loading members...</p>
+                </div>
+              ) : projectMembersError ? (
+                <div className="rounded-lg border border-error/20 bg-error/10 p-3 text-sm text-error">
+                  {projectMembersError}
+                </div>
+              ) : projectMembers.length === 0 ? (
+                <div className="rounded-lg border border-base-300 bg-base-100 p-3 text-sm text-base-content/50">
+                  No assignable project members found.
                 </div>
               ) : (
                 projectMembers.map((member) => {

@@ -88,33 +88,41 @@ export const PATCH = apiHandler(async (req: NextRequest) => {
     pdfUrl = null;
   }
 
-  // Handle new PDF upload
+  // Handle new file upload
+  const ALLOWED_TYPES: Record<string, string> = {
+    "application/pdf": ".pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "text/markdown": ".md",
+    "text/plain": ".txt",
+  };
+
   if (pdf instanceof File && pdf.size > 0) {
-    if (pdf.type !== "application/pdf") {
+    const ext = ALLOWED_TYPES[pdf.type];
+    if (!ext) {
       return NextResponse.json(
-        { error: "Only PDF files allowed", code: "VALIDATION_ERROR" },
+        { error: "Only PDF, DOCX, MD, and TXT files allowed", code: "VALIDATION_ERROR" },
         { status: 400 }
       );
     }
     if (pdf.size > 5 * 1024 * 1024) {
       return NextResponse.json(
-        { error: "PDF must be under 5MB", code: "VALIDATION_ERROR" },
+        { error: "File must be under 5MB", code: "VALIDATION_ERROR" },
         { status: 400 }
       );
     }
 
-    // Delete old PDF if exists
+    // Delete old file if exists
     if (existing.pdfUrl) {
       try {
         await deleteFile(existing.pdfUrl);
       } catch (e) {
-        console.log("Failed to delete old PDF, continuing anyway");
+        console.log("Failed to delete old file, continuing anyway");
       }
     }
 
     const buffer = Buffer.from(await pdf.arrayBuffer());
-    const path = `project-pdfs/${userId}-${Date.now()}.pdf` as const;
-    await uploadFile(buffer, path, "application/pdf");
+    const path = `project-briefs/${userId}-${Date.now()}${ext}` as const;
+    await uploadFile(buffer, path, pdf.type);
     pdfUrl = path;
   }
 

@@ -3,7 +3,7 @@
 import { Suspense, useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Zap, Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 
 // Skeleton shown while useSearchParams resolves
 function LoginSkeleton() {
@@ -12,7 +12,7 @@ function LoginSkeleton() {
       <div className="card w-full max-w-md bg-base-200 shadow-xl">
         <div className="card-body gap-6">
           <div className="flex justify-center">
-            <Zap className="w-8 h-8 text-primary" />
+            <img src="/logo.svg" alt="DevRolin" className="w-8 h-8" />
             <span className="text-2xl font-bold text-base-content ml-2">DevRolin</span>
           </div>
           <div className="skeleton h-10 w-full rounded-lg" />
@@ -100,7 +100,7 @@ function LoginContent() {
       <div className="card w-full max-w-md bg-base-200 shadow-xl">
         <div className="card-body gap-6">
           <div className="flex justify-center items-center">
-            <Zap className="w-8 h-8 text-primary" />
+            <img src="/logo.svg" alt="DevRolin" className="w-8 h-8" />
             <span className="text-2xl font-bold text-base-content ml-2">DevRolin</span>
           </div>
 

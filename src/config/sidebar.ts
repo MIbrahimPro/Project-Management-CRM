@@ -1,3 +1,5 @@
+import { SHOW_ATTENDANCE, SHOW_MEETINGS } from "@/config/features";
+
 export interface SidebarItem {
   label: string;
   href: string;
@@ -5,14 +7,14 @@ export interface SidebarItem {
   children?: Array<{ label: string; href: string; projectId?: string }>;
   isBackButton?: boolean;
   /** Optional unread/unanswered badge id — resolved live by ClientLayout via socket */
-  badgeKey?: "questionsUnanswered";
+  badgeKey?: "questionsUnanswered" | "chatUnseen";
 }
 
 export function getSidebarItems(role: string): SidebarItem[] {
   const base: SidebarItem[] = [
     { label: "Dashboard",  href: "/dashboard",  icon: "LayoutDashboard" },
     { label: "Projects",   href: "/projects",   icon: "FolderKanban" },
-    { label: "Chat",       href: "/chat",        icon: "MessageSquare" },
+    { label: "Chat",       href: "/chat",        icon: "MessageSquare", badgeKey: "chatUnseen" },
   ];
 
   if (role !== "CLIENT") {
@@ -26,7 +28,7 @@ export function getSidebarItems(role: string): SidebarItem[] {
   if (["ADMIN", "ACCOUNTANT"].includes(role)) {
     base.push({ label: "Finance",  href: "/accountant", icon: "Calculator" });
   }
-  if (role !== "CLIENT") {
+  if (role !== "CLIENT" && SHOW_ATTENDANCE) {
     base.push({ label: "Attendance", href: "/attendance", icon: "Clock" });
   }
   if (["ADMIN", "PROJECT_MANAGER"].includes(role)) {
@@ -57,7 +59,7 @@ export function getProjectSidebarItems(projectId: string, role: string): Sidebar
   ];
 
   items.push(
-    { label: "Chat",              href: `/projects/${projectId}/chat`,         icon: "MessageSquare" },
+    { label: "Chat",              href: `/projects/${projectId}/chat`,         icon: "MessageSquare", badgeKey: "chatUnseen" },
     { label: "Questions",         href: `/projects/${projectId}/questions`,    icon: "MessageCircleQuestion", badgeKey: "questionsUnanswered" },
     { label: "Milestone Docs",     href: `/projects/${projectId}/documents`,    icon: "FileText" },
     { label: "Assets",            href: `/projects/${projectId}/assets`,       icon: "HardDrive" },
@@ -66,7 +68,9 @@ export function getProjectSidebarItems(projectId: string, role: string): Sidebar
 
   if (role !== "CLIENT") {
     items.push({ label: "Tasks", href: `/projects/${projectId}/tasks`, icon: "CheckSquare" });
-    items.push({ label: "Meetings", href: `/projects/${projectId}/meetings`, icon: "Video" });
+    if (SHOW_MEETINGS) {
+      items.push({ label: "Meetings", href: `/projects/${projectId}/meetings`, icon: "Video" });
+    }
   }
 
   return items;

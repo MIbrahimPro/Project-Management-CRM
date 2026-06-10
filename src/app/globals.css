@@ -156,3 +156,45 @@
     @apply fixed inset-0;
   }
 }
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  .document-print-editor,
+  .document-print-editor * {
+    visibility: visible !important;
+  }
+
+  .document-print-editor {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
+    color: black !important;
+  }
+
+  .document-print-editor .bn-container,
+  .document-print-editor .bn-editor-wrapper,
+  .document-print-editor .bn-editor {
+    height: auto !important;
+    overflow: visible !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    background: white !important;
+    color: black !important;
+  }
+
+  .document-print-editor .bn-side-menu,
+  .document-print-editor .bn-formatting-toolbar,
+  .document-print-editor .bn-slash-menu,
+  .document-print-editor .bn-link-toolbar,
+  .document-print-editor .yjs-cursor,
+  .document-print-editor .yjs-cursor-label {
+    display: none !important;
+    visibility: hidden !important;
+  }
+}

@@ -10,12 +10,12 @@ import {
   LogOut,
   ChevronDown,
   Menu,
-  Zap,
 } from "lucide-react";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import { CheckInWidget } from "@/components/attendance/CheckInWidget";
 import { useTheme } from "@/components/providers/ThemeProvider";
 import { useSocket } from "@/hooks/useSocket";
+import { SHOW_ATTENDANCE } from "@/config/features";
 import toast from "react-hot-toast";
 
 const ATTENDANCE_ROLES = [
@@ -268,7 +268,7 @@ function ProfilePill({ user }: { user: NavbarUser }) {
 }
 
 export function Navbar({ user, onMenuClick }: NavbarProps) {
-  const hasAttendance = ATTENDANCE_ROLES.includes(user.role);
+  const hasAttendance = SHOW_ATTENDANCE && ATTENDANCE_ROLES.includes(user.role);
 
   return (
     <>
@@ -289,7 +289,7 @@ export function Navbar({ user, onMenuClick }: NavbarProps) {
           <Menu className="w-5 h-5" />
         </button>
         <div className="flex items-center gap-1">
-          <Zap className="w-4 h-4 text-primary" />
+          <img src="/logo.svg" alt="DevRolin" className="w-4 h-4" />
           <span className="text-sm font-bold text-base-content">DevRolin</span>
         </div>
         <div className="flex items-center gap-1">

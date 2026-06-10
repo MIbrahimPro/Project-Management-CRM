@@ -3,6 +3,10 @@ import { apiHandler, forbidden } from "@/lib/api/api-handler";
 import { prisma } from "@/lib/db/prisma";
 import { getSignedUrl } from "@/lib/storage/supabase-storage";
 
+const pdfParseModule = require("pdf-parse");
+const pdfParse = pdfParseModule.default || pdfParseModule;
+const mammoth = require("mammoth");
+
 export const dynamic = "force-dynamic";
 
 export const GET = apiHandler(async (req: NextRequest, ctx) => {
@@ -13,23 +17,49 @@ export const GET = apiHandler(async (req: NextRequest, ctx) => {
   const requestId = ctx?.params?.id;
   if (!requestId) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  // Get the request
   const request = await prisma.clientProjectRequest.findUnique({
     where: { id: requestId },
   });
 
   if (!request || !request.pdfUrl) {
-    return NextResponse.json({ error: "PDF not found" }, { status: 404 });
+    return NextResponse.json({ error: "File not found" }, { status: 404 });
   }
 
-  // Clients can only access their own requests
-  // Admins and managers can access all
   if (role === "CLIENT" && request.clientId !== userId) {
     forbidden();
   }
 
-  // Generate signed URL for viewing
-  const signedUrl = await getSignedUrl(request.pdfUrl, 3600); // 1 hour expiry
+  const signedUrl = await getSignedUrl(request.pdfUrl, 3600);
+  const lower = request.pdfUrl.toLowerCase();
 
-  return NextResponse.json({ data: { url: signedUrl } });
+  let fileType: "pdf" | "md" | "txt" | "docx" = "pdf";
+  let textContent: string | null = null;
+
+  if (lower.endsWith(".md")) {
+    fileType = "md";
+    try {
+      const res = await fetch(signedUrl);
+      if (res.ok) textContent = await res.text();
+    } catch { /* ignore */ }
+  } else if (lower.endsWith(".txt")) {
+    fileType = "txt";
+    try {
+      const res = await fetch(signedUrl);
+      if (res.ok) textContent = await res.text();
+    } catch { /* ignore */ }
+  } else if (lower.endsWith(".docx")) {
+    fileType = "docx";
+    try {
+      const res = await fetch(signedUrl);
+      if (res.ok) {
+        const buffer = Buffer.from(await res.arrayBuffer());
+        const result = await mammoth.extractRawText({ buffer });
+        textContent = result.value;
+      }
+    } catch { /* ignore */ }
+  }
+
+  return NextResponse.json({
+    data: { url: signedUrl, fileType, textContent },
+  });
 });

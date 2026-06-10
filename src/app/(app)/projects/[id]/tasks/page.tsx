@@ -6,6 +6,7 @@ import { CheckCircle2, Circle, Clock, Loader2, Plus, X } from "lucide-react";
 import toast from "react-hot-toast";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
+import { useSocket } from "@/hooks/useSocket";
 
 dayjs.extend(relativeTime);
 
@@ -50,11 +51,47 @@ export default function ProjectTasksPage() {
   const [newTitle, setNewTitle] = useState("");
   const [creating, setCreating] = useState(false);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const { socket: projectsSocket } = useSocket("/projects");
 
   useEffect(() => {
     if (!projectId) return;
     void loadUserAndTasks();
   }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!projectsSocket || !projectId) return;
+
+    const canSeeTask = (task: Task) => {
+      const isManager = currentUser ? MANAGER_ROLES.includes(currentUser.role) : false;
+      return (
+        isManager ||
+        task.createdBy.id === currentUser?.id ||
+        task.assignees.some((a) => a.userId === currentUser?.id || a.user.id === currentUser?.id)
+      );
+    };
+    const onTaskCreated = (data: { task: Task & { projectId?: string | null } }) => {
+      if (data.task.projectId !== projectId || !canSeeTask(data.task)) return;
+      setTasks((prev) => (prev.some((t) => t.id === data.task.id) ? prev : [data.task, ...prev]));
+    };
+    const onTaskUpdated = (data: { task: Task & { projectId?: string | null } }) => {
+      if (data.task.projectId !== projectId) return;
+      setTasks((prev) => {
+        if (!canSeeTask(data.task)) return prev.filter((t) => t.id !== data.task.id);
+        return prev.some((t) => t.id === data.task.id)
+          ? prev.map((t) => (t.id === data.task.id ? { ...t, ...data.task } : t))
+          : [data.task, ...prev];
+      });
+    };
+
+    projectsSocket.on("task_created", onTaskCreated);
+    projectsSocket.on("task_updated", onTaskUpdated);
+    projectsSocket.on("task_assignees_updated", onTaskUpdated);
+    return () => {
+      projectsSocket.off("task_created", onTaskCreated);
+      projectsSocket.off("task_updated", onTaskUpdated);
+      projectsSocket.off("task_assignees_updated", onTaskUpdated);
+    };
+  }, [projectsSocket, projectId, currentUser]);
 
   async function loadUserAndTasks() {
     setLoading(true);

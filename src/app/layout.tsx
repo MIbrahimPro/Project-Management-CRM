@@ -5,6 +5,10 @@ import { ThemeProvider } from "@/components/providers/ThemeProvider";
 export const metadata: Metadata = {
   title: "DevRolin",
   description: "DevRolin Project Management CRM",
+  icons: {
+    icon: "/favicon.svg",
+    apple: "/logo.svg",
+  },
   manifest: "/manifest.json",
   other: {
     "mobile-web-app-capable": "yes",

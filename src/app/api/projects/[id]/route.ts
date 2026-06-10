@@ -232,6 +232,22 @@ export const PATCH = apiHandler(
     const parsed = PatchSchema.parse(body);
     const { teamMemberIds, milestones, projectDescription, ...projectData } = parsed;
 
+    const previousAccess = await prisma.project.findUnique({
+      where: { id },
+      select: {
+        clientId: true,
+        members: { select: { userId: true } },
+        projectClients: { select: { clientId: true } },
+      },
+    });
+    const previousAccessUserIds = new Set(
+      [
+        previousAccess?.clientId,
+        ...(previousAccess?.members.map((m) => m.userId) ?? []),
+        ...(previousAccess?.projectClients.map((c) => c.clientId) ?? []),
+      ].filter((value): value is string => Boolean(value)),
+    );
+
     const project = await prisma.$transaction(async (tx) => {
       const updated = await tx.project.update({
         where: { id },
@@ -423,16 +439,40 @@ export const PATCH = apiHandler(
           },
         },
         client: { select: { id: true, name: true, profilePicUrl: true } },
+        projectClients: { select: { clientId: true } },
       },
     });
+    const updatedProjectDescription = await prisma.aIContext.findFirst({
+      where: { projectId: id, taskId: null, workspaceId: null },
+      select: { content: true },
+    });
+    const projectForEmit = fullProject
+      ? { ...fullProject, projectDescription: updatedProjectDescription?.content ?? "" }
+      : null;
 
     // Emit real-time update
-    if (global.io && fullProject) {
-      global.io.of("/projects").emit("project_updated", { project: fullProject });
+    if (global.io && fullProject && projectForEmit) {
+      const currentAccessUserIds = new Set(
+        [
+          fullProject.clientId,
+          ...fullProject.members.map((m) => m.userId),
+          ...fullProject.projectClients.map((c) => c.clientId),
+        ].filter((value): value is string => Boolean(value)),
+      );
+      const revokedUserIds = Array.from(previousAccessUserIds).filter((uid) => !currentAccessUserIds.has(uid));
+      const grantedUserIds = Array.from(currentAccessUserIds).filter((uid) => !previousAccessUserIds.has(uid));
+      const projectsNS = global.io.of("/projects");
+      projectsNS.to(`project:${id}`).emit("project_updated", { project: projectForEmit });
+      for (const uid of grantedUserIds) {
+        projectsNS.to(`user:${uid}`).emit("project_updated", { project: projectForEmit });
+      }
+      for (const uid of revokedUserIds) {
+        projectsNS.to(`user:${uid}`).emit("project_access_revoked", { projectId: id });
+      }
     }
 
     await logAction(userId, "PROJECT_UPDATED", "Project", id);
 
-    return NextResponse.json({ data: fullProject ?? project });
+    return NextResponse.json({ data: projectForEmit ?? project });
   }
 );

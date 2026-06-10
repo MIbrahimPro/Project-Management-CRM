@@ -55,7 +55,7 @@ export const PATCH = apiHandler(
 
     // Notify all project members
     if (global.io) {
-      global.io.of("/projects").emit("project_updated", { project: updated });
+      global.io.of("/projects").to(`project:${projectId}`).emit("project_updated", { project: updated });
     }
 
     return NextResponse.json({ data: updated });

@@ -11,7 +11,7 @@ import {
   HelpCircle,
   MessageSquare,
   Pencil,
-  Video,
+  Camera,
   X,
   PlayCircle,
   MoreVertical,
@@ -25,6 +25,7 @@ import { usePresence } from "@/components/layout/PresenceProvider";
 import { TaskCard } from "@/components/tasks/TaskCard";
 import { Check } from "lucide-react";
 import { useSocket } from "@/hooks/useSocket";
+import { SHOW_MEETINGS } from "@/config/features";
 
 const StandaloneEditor = dynamic(
   () => import("@/components/documents/StandaloneEditor"),
@@ -222,11 +223,29 @@ export default function ProjectDashboardPage() {
         setProject((prev) => (prev ? { ...prev, ...data.project } : data.project));
       }
     };
+    const handleTaskCreated = (data: { task: any }) => {
+      if (data.task.projectId !== params.id) return;
+      setTasks((prev) => (prev.some((t) => t.id === data.task.id) ? prev : [data.task, ...prev]));
+    };
+    const handleTaskUpdated = (data: { task: any }) => {
+      if (data.task.projectId !== params.id) return;
+      setTasks((prev) => {
+        const exists = prev.some((t) => t.id === data.task.id);
+        if (!exists) return [data.task, ...prev];
+        return prev.map((t) => (t.id === data.task.id ? { ...t, ...data.task } : t));
+      });
+    };
 
     projectsSocket.on("project_updated", handleProjectUpdate);
+    projectsSocket.on("task_created", handleTaskCreated);
+    projectsSocket.on("task_updated", handleTaskUpdated);
+    projectsSocket.on("task_assignees_updated", handleTaskUpdated);
 
     return () => {
       projectsSocket.off("project_updated", handleProjectUpdate);
+      projectsSocket.off("task_created", handleTaskCreated);
+      projectsSocket.off("task_updated", handleTaskUpdated);
+      projectsSocket.off("task_assignees_updated", handleTaskUpdated);
     };
   }, [projectsSocket, params?.id]);
 
@@ -553,12 +572,12 @@ export default function ProjectDashboardPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {!isClient && (
+          {SHOW_MEETINGS && !isClient && (
             <Link
               href={`/projects/${project.id}/meetings`}
               className="btn btn-primary btn-sm gap-2"
             >
-              <Video className="w-4 h-4" />
+              <Camera className="w-4 h-4" />
               Meetings
             </Link>
           )}
@@ -624,7 +643,7 @@ export default function ProjectDashboardPage() {
       )}
 
       {/* Quick-nav cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className={`grid grid-cols-2 ${SHOW_MEETINGS ? "md:grid-cols-4" : "md:grid-cols-3"} gap-3`}>
         <button
           className="card bg-base-200 hover:bg-base-300 transition-colors cursor-pointer text-left"
           onClick={() => router.push(`/projects/${project.id}/chat`)}
@@ -674,16 +693,18 @@ export default function ProjectDashboardPage() {
           </div>
         </button>
 
-        <Link
-          href={`/projects/${project.id}/meetings`}
-          className="card bg-base-200 hover:bg-base-300 transition-colors cursor-pointer text-left"
-        >
-          <div className="card-body p-4">
-            <PlayCircle className="w-5 h-5 text-info mb-1" />
-            <p className="text-xs text-base-content/50">Recordings</p>
-            <p className="text-sm font-medium text-base-content">View clips</p>
-          </div>
-        </Link>
+        {SHOW_MEETINGS && (
+          <Link
+            href={`/projects/${project.id}/meetings`}
+            className="card bg-base-200 hover:bg-base-300 transition-colors cursor-pointer text-left"
+          >
+            <div className="card-body p-4">
+              <PlayCircle className="w-5 h-5 text-info mb-1" />
+              <p className="text-xs text-base-content/50">Recordings</p>
+              <p className="text-sm font-medium text-base-content">View clips</p>
+            </div>
+          </Link>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -698,15 +719,6 @@ export default function ProjectDashboardPage() {
                   <span className="text-sm text-base-content/50">
                     {completedMilestones} / {totalMilestones}
                   </span>
-                  {isManager && (
-                    <button
-                      className="btn btn-ghost btn-xs btn-circle"
-                      onClick={openEditMilestones}
-                      title="Edit milestones"
-                    >
-                      <Pencil className="w-3 h-3" />
-                    </button>
-                  )}
                 </div>
               </div>
 
@@ -819,19 +831,19 @@ export default function ProjectDashboardPage() {
         {/* Team + Client */}
         <div className="space-y-4">
           {/* Client */}
-          {project.client && (
-            <div className="card bg-base-200 shadow-sm">
-              <div className="card-body p-4 relative">
-                <h2 className="font-semibold text-sm text-base-content mb-3">Client</h2>
-                {isManager && (
-                  <button
-                    className="btn btn-ghost btn-xs btn-circle absolute right-4 top-4"
-                    onClick={() => void openEditClient()}
-                    title="Edit client"
-                  >
-                    <Pencil className="w-3 h-3" />
-                  </button>
-                )}
+          <div className="card bg-base-200 shadow-sm">
+            <div className="card-body p-4 relative">
+              <h2 className="font-semibold text-sm text-base-content mb-3">Client</h2>
+              {isManager && (
+                <button
+                  className="btn btn-ghost btn-xs btn-circle absolute right-4 top-4"
+                  onClick={() => void openEditClient()}
+                  title="Edit client"
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
+              )}
+              {project.client ? (
                 <div className="flex items-center gap-3">
                   <UserAvatar
                     user={{ name: project.client.name, profilePicUrl: project.client.profilePicUrl }}
@@ -841,9 +853,16 @@ export default function ProjectDashboardPage() {
                   />
                   <p className="text-sm font-medium text-base-content">{project.client.name}</p>
                 </div>
-              </div>
+              ) : (
+                <div className="flex items-center gap-3 text-base-content/55">
+                  <div className="w-8 h-8 rounded-full bg-base-300 border border-dashed border-base-content/20 flex items-center justify-center text-xs font-semibold">
+                    -
+                  </div>
+                  <p className="text-sm font-medium">No Client</p>
+                </div>
+              )}
             </div>
-          )}
+          </div>
 
           {/* Team */}
           <div className="card bg-base-200 shadow-sm">
@@ -1140,37 +1159,46 @@ export default function ProjectDashboardPage() {
 
       {/* Edit Project Details Modal */}
       <dialog className={`modal ${editProjectOpen ? "modal-open" : ""}`}>
-        <div className="modal-box bg-base-200 max-w-md">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-bold text-lg text-base-content">Edit Project Details</h3>
+        <div className="modal-box bg-base-100 max-w-2xl p-0 overflow-hidden border border-base-300 shadow-2xl">
+          <div className="flex items-start justify-between gap-4 border-b border-base-300 bg-base-200 px-6 py-5">
+            <div>
+              <h3 className="font-semibold text-lg text-base-content">Edit Project Details</h3>
+              <p className="text-sm text-base-content/55 mt-1">
+                Update the name and client-facing description for this project.
+              </p>
+            </div>
             <button className="btn btn-ghost btn-sm btn-circle" onClick={() => setEditProjectOpen(false)}>
               <X className="w-4 h-4" />
             </button>
           </div>
-          <div className="space-y-4">
-            <div className="form-control gap-1">
-              <label className="label py-0"><span className="label-text">Title</span></label>
+          <div className="space-y-5 px-6 py-5">
+            <div className="form-control gap-2">
+              <label className="label py-0">
+                <span className="label-text font-medium">Project title</span>
+              </label>
               <input
                 type="text"
-                className="input input-bordered bg-base-100"
+                className="input input-bordered bg-base-200"
                 value={editProjectTitle}
                 onChange={(e) => setEditProjectTitle(e.target.value)}
                 placeholder="Project title"
               />
             </div>
-            <div className="form-control gap-1">
-              <label className="label py-0"><span className="label-text">Description</span></label>
+            <div className="form-control gap-2">
+              <label className="label py-0">
+                <span className="label-text font-medium">Project description</span>
+              </label>
               <textarea
-                className="textarea textarea-bordered bg-base-100 min-h-[120px]"
+                className="textarea textarea-bordered bg-base-200 min-h-[180px] leading-relaxed"
                 value={editProjectDesc}
                 onChange={(e) => setEditProjectDesc(e.target.value)}
-                placeholder="Project description..."
+                placeholder="Describe the project goals, scope, and important context."
               />
             </div>
           </div>
-          <div className="modal-action">
+          <div className="flex justify-end gap-2 border-t border-base-300 bg-base-200/70 px-6 py-4">
             <button className="btn btn-ghost" onClick={() => setEditProjectOpen(false)}>Cancel</button>
-            <button className="btn btn-primary" onClick={() => void saveProjectSettings()} disabled={savingProject}>
+            <button className="btn btn-primary" onClick={() => void saveProjectSettings()} disabled={savingProject || !editProjectTitle.trim()}>
               {savingProject && <span className="loading loading-spinner loading-sm" />}
               Save
             </button>

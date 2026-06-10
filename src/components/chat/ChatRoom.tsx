@@ -10,7 +10,6 @@ import {
   Send,
   Settings,
   Smile,
-  Trash2,
   Video,
   X,
   ChevronDown,
@@ -26,6 +25,7 @@ import { AvatarStack } from "@/components/projects/AvatarStack";
 import { ChatInfoModal } from "./ChatInfoModal";
 import { MessageContextMenu } from "./MessageContextMenu";
 import { usePresence } from "@/components/layout/PresenceProvider";
+import { SHOW_AI_FEATURES } from "@/config/features";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import toast from "react-hot-toast";
@@ -594,6 +594,42 @@ export function ChatRoom({
     setHasNewMessagesBelow(false);
   }
 
+  async function jumpToMessage(messageId: string) {
+    const scrollToLoadedMessage = () => {
+      const el = document.getElementById(`message-${messageId}`);
+      if (!el) return false;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("ring-2", "ring-primary/40", "rounded-xl");
+      setTimeout(() => el.classList.remove("ring-2", "ring-primary/40", "rounded-xl"), 1800);
+      return true;
+    };
+
+    if (scrollToLoadedMessage()) return;
+
+    let cursor = nextCursor;
+    let found = false;
+    while (cursor && !found) {
+      const res = await fetch(`/api/chat/rooms/${roomId}/messages?cursor=${cursor}`);
+      const data = (await res.json()) as {
+        data: { messages: Message[]; nextCursor: string | null };
+      };
+      found = data.data.messages.some((m) => m.id === messageId);
+      setMessages((prev) => {
+        const existingIds = new Set(prev.map((m) => m.id));
+        const older = data.data.messages.filter((m) => !existingIds.has(m.id));
+        return [...older, ...prev];
+      });
+      cursor = data.data.nextCursor;
+      setNextCursor(cursor);
+    }
+
+    setTimeout(() => {
+      if (!scrollToLoadedMessage()) {
+        toast.error("Could not jump to that message");
+      }
+    }, 100);
+  }
+
   // ── File upload ────────────────────────────────────────────────────────────
   async function sendFile(file: File, type: string) {
     const formData = new FormData();
@@ -799,7 +835,7 @@ export function ChatRoom({
   return (
     <div className="relative flex flex-col h-full bg-base-100">
       {/* ── Header ── */}
-      <div className="flex items-center justify-between px-4 py-3 bg-base-200 border-b border-base-300 flex-shrink-0">
+      <div className="relative z-[80] flex items-center justify-between px-4 py-3 bg-base-200 border-b border-base-300 flex-shrink-0 overflow-visible">
         <div className="flex items-center gap-3">
           {roomDetails?.type === "custom_group" && roomDetails.avatarUrl ? (
             <UserAvatar user={{ name: roomName, profilePicUrl: roomDetails.avatarUrl }} size={32} />
@@ -835,7 +871,7 @@ export function ChatRoom({
                 </label>
                 <div
                   tabIndex={0}
-                  className="dropdown-content z-[60] card card-compact w-64 p-2 shadow-xl bg-base-200 border border-base-300 ml-[-10px] mt-1"
+                  className="dropdown-content z-[140] card card-compact w-64 p-2 shadow-xl bg-base-200 border border-base-300 ml-[-10px] mt-1"
                 >
                   <div className="card-body p-1 max-h-80 overflow-y-auto">
                     <div className="flex items-center justify-between mb-2 px-2 pt-1">
@@ -975,7 +1011,7 @@ export function ChatRoom({
           const reactionGroups = groupReactions(msg.reactions ?? []);
 
           return (
-            <div key={msg.id}>
+            <div key={msg.id} id={`message-${msg.id}`}>
               {showDate && (
                 <div className="flex items-center gap-3 my-4">
                   <div className="flex-1 h-px bg-base-300" />
@@ -1147,51 +1183,6 @@ export function ChatRoom({
                       )}
                     </div>
 
-                    {/* Hover actions */}
-                    {!isDeleted && (
-                      <div
-                        className={`absolute -top-10 ${
-                          isOwn ? "right-0" : "left-0"
-                        } hidden group-hover:flex items-center gap-1 p-1 bg-base-200 border border-base-300 rounded-xl shadow-lg z-20`}
-                      >
-                        {/* Quick Reactions */}
-                        <div className="flex items-center gap-0.5 border-r border-base-300 pr-1 mr-0.5">
-                          {["👍", "❤️", "😂", "😮", "😢", "🙏"].map((emoji) => (
-                            <button
-                              key={emoji}
-                              className="w-6 h-6 flex items-center justify-center hover:bg-base-300 rounded-md transition-all hover:scale-125"
-                              onClick={() => socket?.emit("react", { messageId: msg.id, emoji })}
-                            >
-                              <span className="text-sm">{emoji}</span>
-                            </button>
-                          ))}
-                        </div>
-
-                        <button
-                          title="Reply"
-                          className="p-1 hover:text-primary rounded text-base-content/70 hover:bg-base-300 transition-colors"
-                          onClick={() => setReplyTo(msg)}
-                        >
-                          <Reply className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          title="More emojis"
-                          className="p-1 hover:text-primary rounded text-base-content/70 hover:bg-base-300 transition-colors"
-                          onClick={() => setEmojiPickerFor(msg.id)}
-                        >
-                          <Smile className="w-3.5 h-3.5" />
-                        </button>
-                        {(isOwn || currentUser.role === "ADMIN") && (
-                          <button
-                            title="Delete"
-                            className="p-1 hover:text-error rounded text-base-content/70 hover:bg-base-300 transition-colors"
-                            onClick={() => handleDeleteMessage(msg.id)}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    )}
                   </div>
 
                   {/* Reactions */}
@@ -1371,7 +1362,7 @@ export function ChatRoom({
         )}
 
         {/* AI slash command hint */}
-        {(input.startsWith("/professionalize") || input.startsWith("/email")) && (
+        {SHOW_AI_FEATURES && (input.startsWith("/professionalize") || input.startsWith("/email")) && (
           <p className="text-xs text-primary/70 mt-1 px-1">
             AI will process this message and send the result
           </p>
@@ -1519,6 +1510,7 @@ export function ChatRoom({
         members={roomDetails?.members || []}
         currentUser={currentUser}
         onDeleteGroup={handleDeleteGroup}
+        onJumpToMessage={(messageId) => void jumpToMessage(messageId)}
       />
 
       <AnimatePresence>

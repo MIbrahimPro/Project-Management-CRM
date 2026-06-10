@@ -25,23 +25,31 @@ export const POST = apiHandler(async (req: NextRequest) => {
 
   Schema.parse({ title, description });
 
+  const ALLOWED_TYPES: Record<string, string> = {
+    "application/pdf": ".pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "text/markdown": ".md",
+    "text/plain": ".txt",
+  };
+
   let pdfUrl: string | null = null;
   if (pdf instanceof File && pdf.size > 0) {
-    if (pdf.type !== "application/pdf") {
+    const ext = ALLOWED_TYPES[pdf.type];
+    if (!ext) {
       return NextResponse.json(
-        { error: "Only PDF files allowed", code: "VALIDATION_ERROR" },
+        { error: "Only PDF, DOCX, MD, and TXT files allowed", code: "VALIDATION_ERROR" },
         { status: 400 }
       );
     }
     if (pdf.size > 5 * 1024 * 1024) {
       return NextResponse.json(
-        { error: "PDF must be under 5MB", code: "VALIDATION_ERROR" },
+        { error: "File must be under 5MB", code: "VALIDATION_ERROR" },
         { status: 400 }
       );
     }
     const buffer = Buffer.from(await pdf.arrayBuffer());
-    const path = `project-pdfs/${userId}-${Date.now()}.pdf` as const;
-    await uploadFile(buffer, path, "application/pdf");
+    const path = `project-briefs/${userId}-${Date.now()}${ext}` as const;
+    await uploadFile(buffer, path, pdf.type);
     pdfUrl = path;
   }
 

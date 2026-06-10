@@ -58,7 +58,7 @@ export default function PublicDocumentPage({ params }: { params: { token: string
         <header className="border-b border-base-300 bg-base-200/50 backdrop-blur-md sticky top-0 z-50">
           <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-primary-content font-bold">D</div>
+              <img src="/logo.svg" alt="DevRolin" className="w-8 h-8" />
               <div>
                 <h1 className="text-sm font-bold truncate max-w-[200px] md:max-w-sm">{doc.title}</h1>
                 <p className="text-[10px] uppercase tracking-wider opacity-50 font-bold">
@@ -75,7 +75,7 @@ export default function PublicDocumentPage({ params }: { params: { token: string
 
         <main className="max-w-4xl mx-auto px-4 py-8 md:py-12">
           <div className="bg-base-100 border border-base-300 rounded-2xl shadow-sm overflow-hidden min-h-[60vh] p-6 md:p-10">
-            <StandaloneEditor initialContent={doc.content} readOnly={true} />
+            <StandaloneEditor initialContent={doc.content || doc.initialContent} readOnly={true} />
           </div>
           
           <footer className="mt-12 pb-12 text-center">

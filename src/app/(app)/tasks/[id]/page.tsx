@@ -7,6 +7,8 @@ import { ArrowLeft, Clock, MessageSquare, Save, User, Video, PlayCircle, X } fro
 import toast from "react-hot-toast";
 import { ChatRoom } from "@/components/chat/ChatRoom";
 import MeetingRecordingList from "@/components/meetings/MeetingRecordingList";
+import { SHOW_MEETINGS } from "@/config/features";
+import { useSocket } from "@/hooks/useSocket";
 import type { StandaloneEditorHandle } from "@/components/documents/StandaloneEditor";
 import type { TaskStatus } from "@/components/tasks/TaskKanban";
 
@@ -65,6 +67,7 @@ export default function TaskDetailPage() {
   const descRef = useRef<StandaloneEditorHandle>(null);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedDescRef = useRef<string | null>(null);
+  const { socket: projectsSocket } = useSocket("/projects");
 
   useEffect(() => {
     Promise.all([
@@ -96,6 +99,26 @@ export default function TaskDetailPage() {
       .catch(() => toast.error("Failed to load task", { style: TOAST_ERROR_STYLE }))
       .finally(() => setLoading(false));
   }, [taskId, router]);
+
+  useEffect(() => {
+    if (!projectsSocket || !taskId) return;
+    const onTaskUpdated = (data: { task?: TaskDetail & { projectId?: string | null } }) => {
+      if (data.task?.id !== taskId) return;
+      if (data.task.projectId) {
+        router.replace(`/projects/${data.task.projectId}/tasks/${taskId}`);
+        return;
+      }
+      setTask((prev) => (prev ? { ...prev, ...data.task } : data.task ?? prev));
+      setStatus(data.task.status);
+      savedDescRef.current = data.task.description ?? null;
+    };
+    projectsSocket.on("task_updated", onTaskUpdated);
+    projectsSocket.on("task_assignees_updated", onTaskUpdated);
+    return () => {
+      projectsSocket.off("task_updated", onTaskUpdated);
+      projectsSocket.off("task_assignees_updated", onTaskUpdated);
+    };
+  }, [projectsSocket, taskId, router]);
 
   async function saveStatus(newStatus: TaskStatus) {
     if (!task || newStatus === task.status) return;
@@ -317,6 +340,7 @@ export default function TaskDetailPage() {
           <span className="text-sm text-base-content/60 truncate max-w-[200px]">{task.title}</span>
         </div>
 
+        {SHOW_MEETINGS && (
         <div className="flex items-center gap-2">
           <button 
             className="btn btn-ghost btn-sm gap-2"
@@ -334,6 +358,7 @@ export default function TaskDetailPage() {
             Start Meeting
           </button>
         </div>
+        )}
       </div>
 
       {/* Mobile tab toggle */}
@@ -383,7 +408,7 @@ export default function TaskDetailPage() {
         </div>
       </div>
       {/* Recordings Modal */}
-      {recordingsOpen && (
+      {SHOW_MEETINGS && recordingsOpen && (
         <div className="modal modal-open">
           <div className="modal-box max-w-4xl bg-base-100">
             <div className="flex items-center justify-between mb-6">

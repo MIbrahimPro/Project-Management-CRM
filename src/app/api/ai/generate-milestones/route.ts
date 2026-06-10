@@ -3,7 +3,7 @@ import { z } from "zod";
 import { apiHandler, forbidden } from "@/lib/api/api-handler";
 import { callAIJson } from "@/lib/ai/ai";
 import { getSignedUrl } from "@/lib/storage/supabase-storage";
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+
 const pdfParseModule = require("pdf-parse");
 const pdfParse = pdfParseModule.default || pdfParseModule;
 

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Bell } from "lucide-react";
 import { CheckInWidget } from "@/components/attendance/CheckInWidget";
+import { SHOW_ATTENDANCE } from "@/config/features";
 
 const ATTENDANCE_ROLES = new Set([
   "PROJECT_MANAGER",
@@ -21,7 +22,7 @@ interface DashboardClientStripProps {
  * Interactive dashboard toolbar: check-in (when applicable) and notifications entry.
  */
 export function DashboardClientStrip({ role }: DashboardClientStripProps) {
-  const showCheckIn = ATTENDANCE_ROLES.has(role);
+  const showCheckIn = SHOW_ATTENDANCE && ATTENDANCE_ROLES.has(role);
 
   return (
     <div className="flex flex-wrap items-center gap-3">

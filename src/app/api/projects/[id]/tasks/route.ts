@@ -3,6 +3,12 @@ import { z } from "zod";
 import { apiHandler, forbidden } from "@/lib/api/api-handler";
 import { prisma } from "@/lib/db/prisma";
 import { logAction } from "@/lib/db/audit";
+import { sendNotification } from "@/lib/notifications/notify";
+import type { Server } from "socket.io";
+
+declare global {
+  var io: Server;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -101,6 +107,24 @@ export const POST = apiHandler(
     });
 
     await logAction(userId, "TASK_CREATED", "Task", task.id, { projectId, title: body.title });
+
+    await Promise.all(
+      task.assignees
+        .filter((a) => a.user.id !== userId)
+        .map((a) =>
+          sendNotification(
+            a.user.id,
+            "TASK_ASSIGNED",
+            "Task assigned",
+            `You've been assigned to: **${task.title}**`,
+            `/projects/${projectId}/tasks/${task.id}`,
+          ),
+        ),
+    );
+
+    if (global.io) {
+      global.io.of("/projects").to(`project:${projectId}`).emit("task_created", { task });
+    }
 
     return NextResponse.json({ data: task }, { status: 201 });
   }

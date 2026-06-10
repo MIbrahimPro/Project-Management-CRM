@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { Zap, Check, AlertCircle, UserPlus } from "lucide-react";
+import { Check, AlertCircle, UserPlus } from "lucide-react";
 
 export default function InvitePage() {
   const router = useRouter();
@@ -102,7 +102,7 @@ export default function InvitePage() {
         <div className="card w-full max-w-md bg-base-200 shadow-xl">
           <div className="card-body gap-6">
             <div className="flex justify-center">
-              <Zap className="w-8 h-8 text-primary" />
+              <img src="/logo.svg" alt="DevRolin" className="w-8 h-8" />
               <span className="text-2xl font-bold text-base-content ml-2">DevRolin</span>
             </div>
 
@@ -128,7 +128,7 @@ export default function InvitePage() {
         <div className="card w-full max-w-md bg-base-200 shadow-xl">
           <div className="card-body gap-6">
             <div className="flex justify-center">
-              <Zap className="w-8 h-8 text-primary" />
+              <img src="/logo.svg" alt="DevRolin" className="w-8 h-8" />
               <span className="text-2xl font-bold text-base-content ml-2">DevRolin</span>
             </div>
 
@@ -152,7 +152,7 @@ export default function InvitePage() {
       <div className="card w-full max-w-md bg-base-200 shadow-xl">
         <div className="card-body gap-6">
           <div className="flex justify-center">
-            <Zap className="w-8 h-8 text-primary" />
+            <img src="/logo.svg" alt="DevRolin" className="w-8 h-8" />
             <span className="text-2xl font-bold text-base-content ml-2">DevRolin</span>
           </div>
 

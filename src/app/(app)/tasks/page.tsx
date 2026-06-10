@@ -2,38 +2,28 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckSquare, Kanban, Plus, X, Check } from "lucide-react";
+import { Plus, X, Check } from "lucide-react";
 import toast from "react-hot-toast";
-import { TaskKanban, type TaskCard, type TaskStatus } from "@/components/tasks/TaskKanban";
+import type { TaskCard, TaskStatus } from "@/components/tasks/TaskKanban";
 import { TaskCard as TaskCardComponent } from "@/components/tasks/TaskCard";
-import { TaskDetailModal } from "@/components/tasks/TaskDetailModal";
-import { AvatarStack } from "@/components/projects/AvatarStack";
 import { usePresence } from "@/components/layout/PresenceProvider";
+import { useSocket } from "@/hooks/useSocket";
 
 const TOAST_STYLE = { background: "hsl(var(--b2))", color: "hsl(var(--bc))" };
 const TOAST_ERROR_STYLE = { background: "hsl(var(--b2))", color: "hsl(var(--er))" };
 
-const STATUS_BADGE: Record<TaskStatus, string> = {
-  TODO: "badge-neutral",
-  IN_PROGRESS: "badge-warning",
-  IN_REVIEW: "badge-info",
-  DONE: "badge-success",
-  CANCELLED: "badge-error",
-};
-
 type TeamMember = { id: string; name: string; role: string; profilePicUrl: string | null };
 type Project = { id: string; title: string };
+type CurrentUser = { id: string; role: string };
+const MANAGER_ROLES = ["ADMIN", "PROJECT_MANAGER"];
 
 export default function TasksPage() {
   const router = useRouter();
   const [tasks, setTasks] = useState<TaskCard[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<"list" | "kanban">("list");
   const [tab, setTab] = useState<"all" | "general" | "project">("all");
   const presenceMap = usePresence();
-
-  // Task detail modal
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const { socket: projectsSocket } = useSocket("/projects");
 
   // New task modal
   const [showModal, setShowModal] = useState(false);
@@ -43,6 +33,7 @@ export default function TasksPage() {
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
@@ -50,32 +41,62 @@ export default function TasksPage() {
       fetch("/api/tasks").then((r) => r.json()),
       fetch("/api/projects").then((r) => r.json()),
       fetch("/api/users").then((r) => r.json()),
+      fetch("/api/users/me").then((r) => r.json()),
     ])
-      .then(([tasksRes, projRes, usersRes]: [
+      .then(([tasksRes, projRes, usersRes, userRes]: [
         { data: TaskCard[] },
         { data: Project[] },
         { data: TeamMember[] },
+        { data: CurrentUser },
       ]) => {
         setTasks(tasksRes.data ?? []);
         setProjects(projRes.data ?? []);
         setTeamMembers((usersRes.data ?? []).filter((u) => u.role !== "CLIENT"));
+        setCurrentUser(userRes.data ?? null);
       })
       .catch(() => toast.error("Failed to load", { style: TOAST_ERROR_STYLE }))
       .finally(() => setLoading(false));
   }, []);
 
-  async function handleStatusChange(taskId: string, newStatus: TaskStatus) {
-    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t)));
-    try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus }),
+  useEffect(() => {
+    if (!projectsSocket) return;
+
+    const canSeeTask = (task: TaskCard & { createdById?: string }) => {
+      const isManager = currentUser ? MANAGER_ROLES.includes(currentUser.role) : false;
+      return (
+        isManager ||
+        task.createdById === currentUser?.id ||
+        task.assignees.some((a) => a.user.id === currentUser?.id)
+      );
+    };
+    const onTaskCreated = (data: { task: TaskCard & { createdById?: string } }) => {
+      if (!canSeeTask(data.task)) return;
+      setTasks((prev) => (prev.some((t) => t.id === data.task.id) ? prev : [data.task, ...prev]));
+    };
+    const onTaskUpdated = (data: { task: TaskCard & { createdById?: string } }) => {
+      setTasks((prev) => {
+        if (!canSeeTask(data.task)) return prev.filter((t) => t.id !== data.task.id);
+        return prev.some((t) => t.id === data.task.id)
+          ? prev.map((t) => (t.id === data.task.id ? { ...t, ...data.task } : t))
+          : [data.task, ...prev];
       });
-      if (!res.ok) throw new Error("Failed");
-    } catch {
-      toast.error("Failed to update", { style: TOAST_ERROR_STYLE });
-      // revert handled by re-fetch below
+    };
+
+    projectsSocket.on("task_created", onTaskCreated);
+    projectsSocket.on("task_updated", onTaskUpdated);
+    projectsSocket.on("task_assignees_updated", onTaskUpdated);
+    return () => {
+      projectsSocket.off("task_created", onTaskCreated);
+      projectsSocket.off("task_updated", onTaskUpdated);
+      projectsSocket.off("task_assignees_updated", onTaskUpdated);
+    };
+  }, [projectsSocket, currentUser]);
+
+  function openTask(task: TaskCard) {
+    if (task.project?.id) {
+      router.push(`/projects/${task.project.id}/tasks/${task.id}`);
+    } else {
+      router.push(`/tasks/${task.id}`);
     }
   }
 
@@ -148,22 +169,6 @@ export default function TasksPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="join">
-              <button
-                className={`btn btn-sm join-item gap-1 ${view === "list" ? "btn-primary" : "btn-ghost"}`}
-                onClick={() => setView("list")}
-              >
-                <CheckSquare className="w-4 h-4" />
-                List
-              </button>
-              <button
-                className={`btn btn-sm join-item gap-1 ${view === "kanban" ? "btn-primary" : "btn-ghost"}`}
-                onClick={() => setView("kanban")}
-              >
-                <Kanban className="w-4 h-4" />
-                Board
-              </button>
-            </div>
             <button
               className="btn btn-primary btn-sm gap-2"
               onClick={() => setShowModal(true)}
@@ -174,13 +179,6 @@ export default function TasksPage() {
           </div>
         </div>
 
-        {view === "kanban" ? (
-          <TaskKanban
-            tasks={[...filteredCurrent, ...filteredPast]}
-            onStatusChange={handleStatusChange}
-            onTaskClick={(t) => setSelectedTaskId(t.id)}
-          />
-        ) : (
           <div className="space-y-12">
             {/* Current Tasks */}
             <section className="space-y-4">
@@ -199,7 +197,7 @@ export default function TasksPage() {
                     <TaskCardComponent 
                       key={t.id} 
                       task={t} 
-                      onClick={() => setSelectedTaskId(t.id)}
+                      onClick={() => openTask(t)}
                       presenceMap={presenceMap}
                     />
                   ))}
@@ -224,7 +222,7 @@ export default function TasksPage() {
                     <TaskCardComponent 
                       key={t.id} 
                       task={t} 
-                      onClick={() => setSelectedTaskId(t.id)}
+                      onClick={() => openTask(t)}
                       presenceMap={presenceMap}
                     />
                   ))}
@@ -232,7 +230,6 @@ export default function TasksPage() {
               )}
             </section>
           </div>
-        )}
       </div>
 
       {/* New Task Modal */}
@@ -324,15 +321,6 @@ export default function TasksPage() {
         </div>
         <div className="modal-backdrop" onClick={() => setShowModal(false)} />
       </dialog>
-      {selectedTaskId && (
-        <TaskDetailModal
-          taskId={selectedTaskId}
-          onClose={() => setSelectedTaskId(null)}
-          onUpdate={(updated) => {
-            setTasks(prev => prev.map(t => t.id === updated.id ? updated : t));
-          }}
-        />
-      )}
     </>
   );
 }

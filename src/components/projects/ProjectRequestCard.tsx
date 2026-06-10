@@ -129,22 +129,22 @@ export function ProjectRequestCard({ request, onUpdate, onDelete }: ProjectReque
             />
           </div>
 
-          {/* PDF Section */}
+          {/* File Section */}
           <div className="form-control gap-1">
             <label className="label py-0">
-              <span className="label-text text-xs">PDF Attachment</span>
+              <span className="label-text text-xs">Attachment (PDF/DOCX/MD/TXT)</span>
             </label>
-            {/* Show current PDF */}
+            {/* Show current file */}
             {request.pdfUrl && !deletePdf && !editPdf && (
               <div className="flex items-center gap-2 p-2 bg-base-300/50 rounded-lg">
                 <FileText className="w-4 h-4 text-primary flex-shrink-0" />
-                <span className="text-sm flex-1 truncate">Current PDF attached</span>
+                <span className="text-sm flex-1 truncate">Current file attached</span>
                 <button
                   type="button"
                   className="btn btn-ghost btn-xs btn-circle text-error"
                   onClick={() => setDeletePdf(true)}
                   disabled={isSaving}
-                  title="Remove PDF"
+                  title="Remove file"
                 >
                   <Trash className="w-3 h-3" />
                 </button>
@@ -153,7 +153,7 @@ export function ProjectRequestCard({ request, onUpdate, onDelete }: ProjectReque
             {/* Show delete confirmation */}
             {deletePdf && !editPdf && (
               <div className="flex items-center gap-2 p-2 bg-error/10 rounded-lg">
-                <span className="text-sm text-error flex-1">PDF will be removed</span>
+                <span className="text-sm text-error flex-1">File will be removed</span>
                 <button
                   type="button"
                   className="btn btn-ghost btn-xs"
@@ -164,7 +164,7 @@ export function ProjectRequestCard({ request, onUpdate, onDelete }: ProjectReque
                 </button>
               </div>
             )}
-            {/* Show new PDF upload */}
+            {/* Show new file upload */}
             {editPdf ? (
               <div className="flex items-center gap-2 p-2 bg-base-300 rounded-lg">
                 <FileText className="w-4 h-4 text-primary flex-shrink-0" />
@@ -182,10 +182,10 @@ export function ProjectRequestCard({ request, onUpdate, onDelete }: ProjectReque
               !deletePdf && (
                 <label className="border-2 border-dashed border-base-content/20 rounded-lg p-3 text-center cursor-pointer hover:border-primary/40 transition-colors">
                   <Upload className="w-5 h-5 text-base-content/30 mx-auto mb-1" />
-                  <span className="text-sm text-base-content/50">Click to replace PDF (optional)</span>
+                  <span className="text-sm text-base-content/50">Click to attach file (optional)</span>
                   <input
                     type="file"
-                    accept=".pdf,application/pdf"
+                    accept=".pdf,.docx,.md,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/markdown,text/plain"
                     className="hidden"
                     onChange={(e) => setEditPdf(e.target.files?.[0] ?? null)}
                     disabled={isSaving}
@@ -269,15 +269,10 @@ export function ProjectRequestCard({ request, onUpdate, onDelete }: ProjectReque
         <div className="flex items-center justify-between gap-2 pt-1">
           <div className="flex items-center gap-2">
             {request.pdfUrl && (
-              <a
-                href={request.pdfUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-xs text-primary hover:underline"
-              >
+              <span className="flex items-center gap-1 text-xs text-primary">
                 <FileText className="w-3.5 h-3.5" />
-                View PDF
-              </a>
+                File attached
+              </span>
             )}
           </div>
           <div className="flex items-center gap-1.5">

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db/prisma";
 import { checkAutoCheckIn } from "@/lib/attendance/attendance-helpers";
 import { createNormalChatMessage } from "@/lib/chat/chat-send-message";
 import { callAI } from "@/lib/ai/ai";
+import { SHOW_AI_FEATURES } from "@/config/features";
 import { parse as parseCookies } from "cookie";
 
 export function setupSocketServer(io: Server) {
@@ -129,7 +130,7 @@ export function setupSocketServer(io: Server) {
         }
 
         // Handle AI slash commands BEFORE saving to DB
-        if (content?.startsWith("/professionalize ") || content?.startsWith("/email ")) {
+        if (SHOW_AI_FEATURES && (content?.startsWith("/professionalize ") || content?.startsWith("/email "))) {
           const isEmail = content.startsWith("/email ");
           const userMessage = content.replace(/^\/(professionalize|email) /, "");
           
@@ -162,7 +163,7 @@ export function setupSocketServer(io: Server) {
         }
 
         // Handle @ai mention
-        if (content?.includes("@ai")) {
+        if (SHOW_AI_FEATURES && content?.includes("@ai")) {
           // Get last 20 messages for context
           const recentMessages = await prisma.message.findMany({
             where: { roomId: data.roomId, deletedAt: null, isAiResponse: false },
@@ -219,13 +220,13 @@ export function setupSocketServer(io: Server) {
 
     // ---- REACTIONS ----
     socket.on("react", async ({ messageId, emoji }: { messageId: string; emoji: string }) => {
-      // Toggle reaction: if exists delete it, if not create it
       const existing = await prisma.messageReaction.findUnique({
         where: { messageId_userId_emoji: { messageId, userId, emoji } },
       });
       if (existing) {
         await prisma.messageReaction.delete({ where: { id: existing.id } });
       } else {
+        await prisma.messageReaction.deleteMany({ where: { messageId, userId } });
         await prisma.messageReaction.create({ data: { messageId, userId, emoji } });
       }
       const reactions = await prisma.messageReaction.findMany({ where: { messageId } });
@@ -389,9 +390,11 @@ export function setupSocketServer(io: Server) {
   const projectsNS = io.of("/projects");
   projectsNS.use(authMiddleware);
 
-  projectsNS.on("connection", (socket) => {
+  projectsNS.on("connection", async (socket) => {
     const userId = socket.data.userId as string;
     const role = socket.data.role as string;
+
+    socket.join(`user:${userId}`);
 
     // Clients join their own project room
     // Managers/admins join all projects
@@ -399,6 +402,28 @@ export function setupSocketServer(io: Server) {
       socket.join("client_projects");
     } else if (["ADMIN", "PROJECT_MANAGER"].includes(role)) {
       socket.join("manager_projects");
+    }
+
+    try {
+      const isManager = ["ADMIN", "PROJECT_MANAGER"].includes(role);
+      const projects = isManager
+        ? await prisma.project.findMany({ select: { id: true } })
+        : await prisma.project.findMany({
+            where: {
+              OR: [
+                { members: { some: { userId } } },
+                { projectClients: { some: { clientId: userId } } },
+                { clientId: userId },
+              ],
+            },
+            select: { id: true },
+          });
+
+      for (const project of projects) {
+        socket.join(`project:${project.id}`);
+      }
+    } catch (err) {
+      console.error(`[Socket] Failed to join /projects rooms for ${userId}:`, err);
     }
   });
 

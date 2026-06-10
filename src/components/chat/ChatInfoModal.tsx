@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { X, Info, Users, Image as ImageIcon, Link as LinkIcon, Mic, LogOut, Trash2, Camera, UserPlus, Download, ExternalLink, Play, Calendar } from "lucide-react";
+import { X, Info, Users, Image as ImageIcon, Link as LinkIcon, Mic, LogOut, Trash2, Camera, UserPlus, Download, ExternalLink, Play, Calendar, Pin } from "lucide-react";
+import { SHOW_MEETINGS } from "@/config/features";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import { motion, AnimatePresence } from "framer-motion";
 import dayjs from "dayjs";
@@ -22,9 +23,35 @@ interface ChatInfoModalProps {
   onUpdateGroup?: (data: any) => Promise<void>;
   onLeaveGroup?: () => Promise<void>;
   onDeleteGroup?: () => Promise<void>;
+  onJumpToMessage?: (messageId: string) => void;
 }
 
-type Tab = "overview" | "members" | "media" | "links" | "recordings";
+type Tab = "overview" | "members" | "pinned" | "media" | "links" | "recordings";
+
+function SignedImage({ path, className, onClick }: { path: string; className?: string; onClick?: () => void }) {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/storage/signed-url?path=${encodeURIComponent(path)}`)
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("Failed"))))
+      .then((data: { url?: string }) => {
+        if (!cancelled) setUrl(data.url ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setUrl(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
+
+  if (!url) {
+    return <div className={`${className ?? ""} bg-base-300 animate-pulse`} />;
+  }
+
+  return <img src={url} className={className} alt="media" onClick={onClick} />;
+}
 
 export function ChatInfoModal({
   isOpen,
@@ -37,10 +64,12 @@ export function ChatInfoModal({
   onUpdateGroup,
   onLeaveGroup,
   onDeleteGroup,
+  onJumpToMessage,
 }: ChatInfoModalProps) {
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [media, setMedia] = useState<any[]>([]);
   const [links, setLinks] = useState<any[]>([]);
+  const [pinned, setPinned] = useState<any[]>([]);
   const [recordings, setRecordings] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [enlargedImage, setEnlargedImage] = useState<string | null>(null);
@@ -75,6 +104,19 @@ export function ChatInfoModal({
     }
   }, [roomId]);
 
+  const fetchPinned = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/chat/rooms/${roomId}/pinned`);
+      const data = await res.json();
+      setPinned(data.data || []);
+    } catch (e) {
+      toast.error("Failed to fetch pinned messages");
+    } finally {
+      setLoading(false);
+    }
+  }, [roomId]);
+
   const fetchRecordings = useCallback(async () => {
     setLoading(true);
     try {
@@ -92,9 +134,10 @@ export function ChatInfoModal({
     if (isOpen) {
       if (activeTab === "media") void fetchMedia();
       if (activeTab === "links") void fetchLinks();
+      if (activeTab === "pinned") void fetchPinned();
       if (activeTab === "recordings") void fetchRecordings();
     }
-  }, [isOpen, activeTab, roomId, fetchMedia, fetchLinks, fetchRecordings]);
+  }, [isOpen, activeTab, roomId, fetchMedia, fetchLinks, fetchPinned, fetchRecordings]);
 
   async function handleRename() {
     if (!editingName.trim() || editingName === roomName) return;
@@ -187,9 +230,10 @@ export function ChatInfoModal({
           {[
             { id: "overview", label: "Overview", icon: Info },
             { id: "members", label: "Members", icon: Users },
+            { id: "pinned", label: "Pinned", icon: Pin },
             { id: "media", label: "Media", icon: ImageIcon },
             { id: "links", label: "Links", icon: LinkIcon },
-            { id: "recordings", label: "Recordings", icon: Mic },
+            ...(SHOW_MEETINGS ? [{ id: "recordings", label: "Recordings", icon: Mic }] : []),
           ].map((tab) => (
             <button
               key={tab.id}
@@ -319,6 +363,49 @@ export function ChatInfoModal({
               </motion.div>
             )}
 
+            {activeTab === "pinned" && (
+              <motion.div
+                key="pinned"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="space-y-3"
+              >
+                {loading ? (
+                  <div className="flex justify-center py-12"><span className="loading loading-spinner loading-lg text-primary" /></div>
+                ) : pinned.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-base-content/30">
+                    <Pin className="w-12 h-12 mb-4 opacity-20" />
+                    <p>No pinned messages</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {pinned.map((message) => (
+                      <button
+                        key={message.id}
+                        type="button"
+                        className="w-full text-left flex items-start gap-3 p-3 rounded-xl bg-base-200 hover:bg-base-300 transition-colors border border-base-300"
+                        onClick={() => {
+                          onJumpToMessage?.(message.id);
+                          onClose();
+                        }}
+                      >
+                        <Pin className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-xs text-base-content/45 mb-1">
+                            {message.sender?.name ?? "Someone"} • {dayjs(message.createdAt).format("MMM D, YYYY h:mm A")}
+                          </p>
+                          <p className="text-sm text-base-content line-clamp-3">
+                            {message.content || `[${message.mediaType || "Media"}]`}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </motion.div>
+            )}
+
             {activeTab === "media" && (
               <motion.div
                 key="media"
@@ -339,10 +426,9 @@ export function ChatInfoModal({
                     {media.map((item) => (
                       <div key={item.id} className="aspect-square relative group cursor-pointer overflow-hidden rounded-lg bg-base-300">
                         {item.mediaType === "image" ? (
-                          <img 
-                            src={`/api/storage/signed-url?path=${encodeURIComponent(item.mediaUrl)}`} 
-                            className="w-full h-full object-cover group-hover:scale-110 transition-transform" 
-                            alt="media"
+                          <SignedImage
+                            path={item.mediaUrl}
+                            className="w-full h-full object-cover group-hover:scale-110 transition-transform"
                             onClick={() => setEnlargedImage(item.mediaUrl)}
                           />
                         ) : (
@@ -448,14 +534,14 @@ export function ChatInfoModal({
       <AnimatePresence>
         {enlargedImage && (
           <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/90 p-4" onClick={() => setEnlargedImage(null)}>
-            <motion.img 
+            <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              src={`/api/storage/signed-url?path=${encodeURIComponent(enlargedImage)}`} 
-              className="max-w-full max-h-full rounded-lg shadow-2xl" 
-              alt="enlarged"
-            />
+              className="max-w-full max-h-full rounded-lg shadow-2xl overflow-hidden"
+            >
+              <SignedImage path={enlargedImage} className="max-w-full max-h-[90vh] object-contain" />
+            </motion.div>
             <button className="absolute top-4 right-4 btn btn-circle btn-ghost text-white"><X className="w-6 h-6" /></button>
           </div>
         )}

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Zap, ArrowLeft, Eye, EyeOff, Check, X } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Check, X } from "lucide-react";
 
 function PasswordStrength({ password }: { password: string }) {
   const checks = {
@@ -142,7 +142,7 @@ export default function ResetPasswordPage() {
           </Link>
 
           <div className="flex justify-center">
-            <Zap className="w-8 h-8 text-primary" />
+            <img src="/logo.svg" alt="DevRolin" className="w-8 h-8" />
             <span className="text-2xl font-bold text-base-content ml-2">DevRolin</span>
           </div>
 

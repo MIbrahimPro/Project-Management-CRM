@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { forwardRef, useEffect, useMemo, useState, useCallback, useRef, useImperativeHandle } from "react";
 import { HocuspocusProvider } from "@hocuspocus/provider";
 import {
   useCreateBlockNote,
@@ -8,19 +8,20 @@ import {
   type DefaultReactSuggestionItem,
   FormattingToolbar,
   FormattingToolbarController,
+  getFormattingToolbarItems,
 } from "@blocknote/react";
 import { SuggestionMenuControllerSolid } from "@/components/blocknote/SuggestionMenuControllerSolid";
 import { BlockNoteView } from "@blocknote/mantine";
 import { filterSuggestionItems } from "@blocknote/core";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Wand2 } from "lucide-react";
 import "@blocknote/mantine/style.css";
 import "@/styles/blocknote-overrides.css";
 import { useTheme } from "@/components/providers/ThemeProvider";
+import { SHOW_AI_FEATURES } from "@/config/features";
 
 const LIGHT_THEMES = ["neutral-light", "light", "corporate", "pale"];
-const MAX_AI_CHARS = 16000; // Groq models support 128K tokens (~96K chars), we use 16K for safety
+const MAX_AI_CHARS = 16000;
 
-/** Hash a string to a deterministic hue (0-360). */
 function hashToColor(str: string): string {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -39,17 +40,21 @@ interface DocumentEditorProps {
   initialContent?: string | null;
 }
 
-export default function DocumentEditor({
+export interface DocumentEditorHandle {
+  getMarkdown: () => Promise<string>;
+}
+
+const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(function DocumentEditor({
   docId,
   projectId,
   collabToken,
   currentUser,
   readOnly = false,
   initialContent,
-}: DocumentEditorProps) {
+}: DocumentEditorProps, ref) {
   const [synced, setSynced] = useState(false);
   const [selectedText, setSelectedText] = useState("");
-  const [selectionBusy, setSelectionBusy] = useState<null | "summarize" | "professionalize" | "format">(null);
+  const [selectionBusy, setSelectionBusy] = useState<null | "format" | "write">(null);
   const [aiPromptOpen, setAiPromptOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
@@ -65,7 +70,6 @@ export default function DocumentEditor({
         token: collabToken,
         onSynced: () => setSynced(true),
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [docId, projectId],
   );
 
@@ -99,116 +103,100 @@ export default function DocumentEditor({
     },
   });
 
+  useImperativeHandle(ref, () => ({
+    getMarkdown: () => editor.blocksToMarkdownLossy(editor.document),
+  }), [editor]);
+
   const getEditorPlainText = useCallback(() => {
     if (!wrapperRef.current) return "";
     const el = wrapperRef.current.querySelector(".bn-editor");
     return (el?.textContent ?? "").trim();
   }, []);
 
-  const applySelectionResult = useCallback(
+  const applyBlocks = useCallback(
     async (text: string) => {
       if (!text.trim()) return;
-      // For format/professionalize/summarize, parse markdown to blocks for proper formatting
-      // For plain text, use insertInlineContent
       const blocks = await editor.tryParseMarkdownToBlocks(text);
       if (blocks.length > 0) {
-        editor.insertBlocks(blocks, editor.getTextCursorPosition().block, "after");
+        const selection = editor.getSelection();
+        if (selection?.blocks?.length) {
+          editor.replaceBlocks(selection.blocks, blocks);
+        } else {
+          const cursorBlock = editor.getTextCursorPosition().block;
+          editor.insertBlocks(blocks, cursorBlock, "after");
+        }
+        editor.setTextCursorPosition(blocks[blocks.length - 1], "end");
       } else {
         editor.insertInlineContent(text);
       }
     },
-    [editor]
+    [editor],
   );
 
-  const runSelectionAiAction = useCallback(
-    async (type: "summarize" | "professionalize" | "format") => {
-      const source = selectedText.trim();
-      if (!source || readOnly) return;
-      setSelectionBusy(type);
-      try {
-        let instruction: string;
-        let apiType: string;
-        
-        switch (type) {
-          case "summarize":
-            instruction = "Summarize this text while preserving key facts and intent.";
-            apiType = "summarize";
-            break;
-          case "format":
-            instruction = "Format and structure this text with proper headings and organization:";
-            apiType = "format";
-            break;
-          case "professionalize":
-          default:
-            instruction = "Professionalize this text for a client-facing software agency document.";
-            apiType = "improve";
-        }
-        
-        // Use full text up to MAX_AI_CHARS (16K is plenty for Groq models)
-        const maxSourceLen = MAX_AI_CHARS - 500; // Leave room for instruction
-        const truncatedSource = source.length > maxSourceLen ? source.slice(0, maxSourceLen) + "..." : source;
-        
-        const res = await fetch("/api/ai/document", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: apiType,
-            prompt: `${instruction}\n\nSelected text:\n${truncatedSource}`,
-            context: `Current document context:\n${getEditorPlainText().slice(0, 12000)}`,
-          }),
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({ error: "Unknown error" }));
-          throw new Error(err.error || `Request failed: ${res.status}`);
-        }
-        const data = (await res.json()) as { data?: { content?: string } };
-        const output = data.data?.content?.trim() ?? "";
-        if (output) {
-          await applySelectionResult(output);
-          setSelectedText("");
-        }
-      } catch (e) {
-        console.error("AI action failed:", e);
-        // Show error in UI - could add a toast here
-      } finally {
-        setSelectionBusy(null);
+  const runFormatSelection = useCallback(async () => {
+    const source = selectedText.trim();
+    if (!source || readOnly) return;
+    setSelectionBusy("format");
+    try {
+      const maxLen = MAX_AI_CHARS - 500;
+      const truncated = source.length > maxLen ? source.slice(0, maxLen) + "..." : source;
+      const res = await fetch("/api/ai/document", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "format",
+          prompt: `Reformat ONLY the following selected text with proper markdown structure. Do NOT include any other content, only the reformatted version of this text:\n\n${truncated}`,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({ error: "Failed" }))).error);
+      const data = (await res.json()) as { data?: { content?: string } };
+      const output = data.data?.content?.trim() ?? "";
+      if (output) {
+        await applyBlocks(output);
+        setSelectedText("");
       }
-    },
-    [applySelectionResult, getEditorPlainText, readOnly, selectedText]
-  );
+    } catch (e) {
+      console.error("Format failed:", e);
+    } finally {
+      setSelectionBusy(null);
+    }
+  }, [applyBlocks, readOnly, selectedText]);
 
-  const runPromptAiInsert = useCallback(async () => {
+  const runWriteAi = useCallback(async () => {
     const prompt = aiPrompt.trim();
     if (!prompt || readOnly) return;
     setAiBusy(true);
     try {
+      const hasSelection = selectedText.trim().length > 0;
+      const userMessage = hasSelection
+        ? `Rewrite the selected text based on: ${prompt}\n\nSelected text:\n${selectedText.slice(0, MAX_AI_CHARS - 500)}`
+        : `Write content based on: ${prompt}`;
       const res = await fetch("/api/ai/document", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: "draft",
-          prompt: `Write content to insert into the current document.\nUser request: ${prompt}`,
-          context: `Current document context:\n${getEditorPlainText().slice(0, 7000)}`,
+          prompt: userMessage,
+          context: getEditorPlainText().slice(0, 7000),
         }),
       });
       const data = (await res.json()) as { data?: { content?: string } };
       const output = data.data?.content?.trim() ?? "";
       if (output) {
-        const blocks = await editor.tryParseMarkdownToBlocks(output);
-        const cursorBlock = editor.getTextCursorPosition().block;
-        editor.insertBlocks(blocks, cursorBlock, "after");
+        await applyBlocks(output);
+        setSelectedText("");
       }
       setAiPromptOpen(false);
       setAiPrompt("");
     } finally {
       setAiBusy(false);
     }
-  }, [aiPrompt, editor, getEditorPlainText, readOnly]);
+  }, [aiPrompt, applyBlocks, getEditorPlainText, readOnly, selectedText]);
 
   useEffect(() => {
     return editor.onSelectionChange(() => {
-      const next = editor.getSelectedText().trim();
-      setSelectedText(next);
+      const text = editor.getSelectedText().trim();
+      setSelectedText(text);
     });
   }, [editor]);
 
@@ -221,11 +209,9 @@ export default function DocumentEditor({
             (!editor.topLevelBlocks[0].content ||
               (Array.isArray(editor.topLevelBlocks[0].content) &&
                 editor.topLevelBlocks[0].content.length === 0)));
-
         if (isDocEmpty) {
           try {
             const trimmed = initialContent.trim();
-            // Detect stored BlockNote JSON (from projects/new markdown→JSON conversion)
             if (trimmed.startsWith("[{") || trimmed.startsWith("[  {")) {
               const blocks = JSON.parse(trimmed) as Parameters<typeof editor.replaceBlocks>[1];
               editor.replaceBlocks(editor.topLevelBlocks, blocks);
@@ -245,14 +231,14 @@ export default function DocumentEditor({
   useEffect(() => {
     function handleCopy(event: ClipboardEvent) {
       const selection = window.getSelection();
-      const copied = selection?.toString() ?? "";
-      if (!copied.trim()) return;
-      const anchorNode = selection?.anchorNode;
+      if (!selection || selection.isCollapsed) return;
+      const anchorNode = selection.anchorNode;
       if (!anchorNode || !wrapperRef.current?.contains(anchorNode)) return;
+      const copied = selection.toString();
+      if (!copied.trim()) return;
       event.preventDefault();
       event.clipboardData?.setData("text/plain", copied);
     }
-
     document.addEventListener("copy", handleCopy);
     return () => document.removeEventListener("copy", handleCopy);
   }, []);
@@ -260,31 +246,21 @@ export default function DocumentEditor({
   const slashItems = useCallback(
     async (query: string): Promise<DefaultReactSuggestionItem[]> => {
       const defaults = getDefaultReactSlashMenuItems(editor).filter((item) => {
-        const haystack = [
-          item.title,
-          item.subtext,
-          ...(item.aliases ?? []),
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-
-        // Emoji slash command is intentionally disabled for now.
-        return !/(emoji|emoticon|smile|smiley)/.test(haystack);
+        const haystack = [item.title, ...(item.aliases ?? [])]
+          .filter(Boolean).join(" ").toLowerCase();
+        return !/(emoji|emoticon)/.test(haystack);
       });
-      const aiItem: DefaultReactSuggestionItem = {
-        title: "AI: Write with prompt",
-        subtext: "Generate and insert content using AI",
+      const writeItem: DefaultReactSuggestionItem = {
+        title: "Write with AI",
+        subtext: "Generate content with AI at the cursor",
         icon: <Sparkles className="w-4 h-4" />,
-        onItemClick: () => {
-          setAiPromptOpen(true);
-        },
-        aliases: ["ai", "assistant", "generate", "write"],
+        onItemClick: () => setAiPromptOpen(true),
+        aliases: ["ai", "generate", "write"],
         group: "AI",
       };
-      return filterSuggestionItems([...defaults, aiItem], query);
+      return filterSuggestionItems(SHOW_AI_FEATURES ? [...defaults, writeItem] : defaults, query);
     },
-    [editor]
+    [editor],
   );
 
   if (!synced) {
@@ -297,126 +273,72 @@ export default function DocumentEditor({
 
   return (
     <div className="bn-editor-wrapper h-full relative flex flex-col" ref={wrapperRef}>
-      {/* AI actions bar - only show selection tools when text is selected */}
-      {!readOnly && (
-        <div className="flex items-center gap-1 px-3 py-1.5 bg-base-200/70 border-b border-base-300 flex-shrink-0">
-          <span className="text-[10px] font-semibold text-base-content/40 uppercase tracking-wide mr-1">AI</span>
-          {selectedText && (
-            <>
-              <button
-                className="btn btn-ghost btn-xs gap-1 text-primary disabled:text-base-content/30"
-                onClick={() => void runSelectionAiAction("summarize")}
-                disabled={selectionBusy !== null || selectedText.length > MAX_AI_CHARS}
-                title={
-                  selectedText.length > MAX_AI_CHARS
-                    ? `Selection too long (${selectedText.length}/${MAX_AI_CHARS} chars). Select less text.`
-                    : "Summarize selected text"
-                }
-              >
-                {selectionBusy === "summarize" ? <span className="loading loading-spinner loading-xs" /> : <Sparkles className="w-3 h-3" />}
-                Summarize
-              </button>
-              <button
-                className="btn btn-ghost btn-xs gap-1 text-secondary disabled:text-base-content/30"
-                onClick={() => void runSelectionAiAction("professionalize")}
-                disabled={selectionBusy !== null || selectedText.length > MAX_AI_CHARS}
-                title={
-                  selectedText.length > MAX_AI_CHARS
-                    ? `Selection too long (${selectedText.length}/${MAX_AI_CHARS} chars). Select less text.`
-                    : "Professionalize selected text"
-                }
-              >
-                {selectionBusy === "professionalize" ? <span className="loading loading-spinner loading-xs" /> : <Sparkles className="w-3 h-3" />}
-                Professionalize
-              </button>
-              <button
-                className="btn btn-ghost btn-xs gap-1 text-accent disabled:text-base-content/30"
-                onClick={() => void runSelectionAiAction("format")}
-                disabled={selectionBusy !== null || selectedText.length > MAX_AI_CHARS}
-                title={
-                  selectedText.length > MAX_AI_CHARS
-                    ? `Selection too long (${selectedText.length}/${MAX_AI_CHARS} chars). Select less text.`
-                    : "Format with headings and structure"
-                }
-              >
-                {selectionBusy === "format" ? <span className="loading loading-spinner loading-xs" /> : <Sparkles className="w-3 h-3" />}
-                Format
-              </button>
-              <div className="w-px h-4 bg-base-300 mx-1" />
-            </>
-          )}
-          <button
-            className="btn btn-ghost btn-xs gap-1 text-base-content/60"
-            onClick={() => setAiPromptOpen(true)}
-            title="Write with AI"
-          >
-            <Sparkles className="w-3 h-3" />
-            Write…
-          </button>
-          {selectedText && (
-            <span className={`text-[10px] ml-1 truncate max-w-[160px] ${selectedText.length > MAX_AI_CHARS ? "text-error" : "text-base-content/30"}`}>
-              &ldquo;{selectedText.slice(0, 40)}{selectedText.length > 40 ? "…" : ""}&rdquo; ({selectedText.length}/{MAX_AI_CHARS})
-            </span>
-          )}
-        </div>
-      )}
       <div className="flex-1 min-h-0">
-      <BlockNoteView
-        editor={editor}
-        editable={!readOnly}
-        theme={bnTheme}
-        className="h-full"
-        slashMenu={false}
-        formattingToolbar={false}
-      >
-        <SuggestionMenuControllerSolid triggerCharacter="/" getItems={slashItems} />
-        <FormattingToolbarController
-          formattingToolbar={(props) => (
-            <FormattingToolbar {...props}>
-              <div className="flex items-center gap-1 border-l border-base-300 ml-1 pl-1">
-                <button
-                  className="bn-button hover:bg-base-300 transition-colors"
-                  onClick={() => void runSelectionAiAction("summarize")}
-                  title="AI Summarize"
-                  disabled={selectionBusy !== null || !selectedText}
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-primary" />
-                  <span className="text-[10px] ml-1">Summarize</span>
-                </button>
-                <button
-                  className="bn-button hover:bg-base-300 transition-colors"
-                  onClick={() => void runSelectionAiAction("professionalize")}
-                  title="AI Professionalize"
-                  disabled={selectionBusy !== null || !selectedText}
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-secondary" />
-                  <span className="text-[10px] ml-1">Professionalize</span>
-                </button>
-                <button
-                  className="bn-button hover:bg-base-300 transition-colors"
-                  onClick={() => void runSelectionAiAction("format")}
-                  title="AI Format"
-                  disabled={selectionBusy !== null || !selectedText}
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-accent" />
-                  <span className="text-[10px] ml-1">Format</span>
-                </button>
-              </div>
-            </FormattingToolbar>
+        <BlockNoteView
+          editor={editor}
+          editable={!readOnly}
+          theme={bnTheme}
+          className="h-full"
+          slashMenu={false}
+          formattingToolbar={false}
+        >
+          <SuggestionMenuControllerSolid triggerCharacter="/" getItems={slashItems} />
+          {!readOnly && (
+            <FormattingToolbarController
+              formattingToolbar={(props: any) => {
+                const defaultItems = getFormattingToolbarItems(props.blockTypeSelectItems);
+                const hasTextSelection = SHOW_AI_FEATURES && selectedText.length > 0;
+                return (
+                  <FormattingToolbar>
+                    {defaultItems}
+                    {hasTextSelection && (
+                      <>
+                        <div className="w-px h-5 bg-base-content/15 mx-0.5" />
+                        <button
+                          className="bn-button"
+                          onClick={() => void runFormatSelection()}
+                          title="Format selected text"
+                          disabled={selectionBusy !== null}
+                        >
+                          {selectionBusy === "format" ? (
+                            <span className="loading loading-spinner w-3.5 h-3.5" />
+                          ) : (
+                            <Wand2 className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </>
+                    )}
+                    {SHOW_AI_FEATURES && (
+                      <>
+                        <div className="w-px h-5 bg-base-content/15 mx-0.5" />
+                        <button
+                          className="bn-button"
+                          onClick={() => setAiPromptOpen(true)}
+                          title="Write with AI"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </FormattingToolbar>
+                );
+              }}
+            />
           )}
-        />
-      </BlockNoteView>
+        </BlockNoteView>
       </div>
 
-      <dialog className={`modal ${aiPromptOpen ? "modal-open" : ""}`}>
+      <dialog className={`modal ${SHOW_AI_FEATURES && aiPromptOpen ? "modal-open" : ""}`}>
         <div className="modal-box bg-base-200 max-w-lg">
-          <h3 className="font-semibold text-base-content text-lg mb-2">AI Insert</h3>
+          <h3 className="font-semibold text-base-content text-lg mb-2">AI Write</h3>
           <p className="text-sm text-base-content/60 mb-3">
-            Describe what to write. Generated content will be inserted at the cursor.
+            {selectedText
+              ? "Describe how to rewrite the selected text. AI will replace it."
+              : "Describe what to write. Content will be inserted at the cursor."}
           </p>
           <textarea
             className="textarea textarea-bordered bg-base-100 w-full min-h-28"
-            placeholder="e.g. Write a structured API requirements section for milestone 2..."
+            placeholder="e.g. Write a detailed API requirements section..."
             value={aiPrompt}
             onChange={(e) => setAiPrompt(e.target.value)}
           />
@@ -430,9 +352,13 @@ export default function DocumentEditor({
             >
               Cancel
             </button>
-            <button className="btn btn-primary" onClick={() => void runPromptAiInsert()} disabled={aiBusy || !aiPrompt.trim()}>
+            <button
+              className="btn btn-primary"
+              onClick={() => void runWriteAi()}
+              disabled={aiBusy || !aiPrompt.trim()}
+            >
               {aiBusy && <span className="loading loading-spinner loading-xs" />}
-              Insert
+              {selectedText ? "Rewrite" : "Write"}
             </button>
           </div>
         </div>
@@ -440,4 +366,6 @@ export default function DocumentEditor({
       </dialog>
     </div>
   );
-}
+});
+
+export default DocumentEditor;

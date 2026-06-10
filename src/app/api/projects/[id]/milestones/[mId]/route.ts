@@ -3,6 +3,7 @@ import { z } from "zod";
 import { apiHandler, forbidden } from "@/lib/api/api-handler";
 import { prisma } from "@/lib/db/prisma";
 import { logAction } from "@/lib/db/audit";
+import { sendNotification } from "@/lib/notifications/notify";
 import type { Server } from "socket.io";
 
 declare global {
@@ -95,12 +96,33 @@ export const PATCH = apiHandler(
           },
         },
         client: { select: { id: true, name: true, profilePicUrl: true } },
+        projectClients: { select: { clientId: true } },
       },
     });
 
     // Emit real-time update so everyone sees milestone changes
     if (global.io && fullProject) {
-      global.io.of("/projects").emit("project_updated", { project: fullProject });
+      global.io.of("/projects").to(`project:${projectId}`).emit("project_updated", { project: fullProject });
+    }
+
+    if (body.status || body.title || body.content !== undefined) {
+      const recipientIds = new Set<string>();
+      if (fullProject?.clientId) recipientIds.add(fullProject.clientId);
+      fullProject?.projectClients.forEach((c) => recipientIds.add(c.clientId));
+      fullProject?.members.forEach((m) => recipientIds.add(m.userId));
+      recipientIds.delete(userId);
+
+      await Promise.all(
+        Array.from(recipientIds).map((uid) =>
+          sendNotification(
+            uid,
+            "PROJECT_UPDATE",
+            "Milestone updated",
+            `${milestone.title} was updated.`,
+            `/projects/${projectId}`,
+          ),
+        ),
+      );
     }
 
     return NextResponse.json({ data: milestone });

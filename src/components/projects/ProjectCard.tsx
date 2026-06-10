@@ -13,9 +13,7 @@ function milestoneSummary(milestones: Milestone[]) {
   const total = milestones.length;
   const completedCount = milestones.filter((m) => m.status === "COMPLETED").length;
   const totalCount = total > 0 ? total : 1;
-  const currentMilestone =
-    milestones.find((m) => m.status !== "COMPLETED") ?? milestones[milestones.length - 1];
-  return { completedCount, totalCount, currentMilestone };
+  return { completedCount, totalCount };
 }
 
 interface ProjectCardProps {
@@ -26,7 +24,7 @@ interface ProjectCardProps {
  * Project summary card (shared with dashboard and future `/projects` listing).
  */
 export function ProjectCard({ project }: ProjectCardProps) {
-  const { completedCount, totalCount, currentMilestone } = milestoneSummary(project.milestones);
+  const { completedCount, totalCount } = milestoneSummary(project.milestones);
   const stackUsers = project.members.slice(0, 3).map((m) => ({
     id: m.user.id,
     name: m.user.name,
@@ -44,15 +42,11 @@ export function ProjectCard({ project }: ProjectCardProps) {
           <h3 className="font-semibold text-base-content line-clamp-1">{project.title}</h3>
           <StatusBadge status={project.status} />
         </div>
-        <div className="text-sm text-base-content/60">
-          Milestone {completedCount}/{totalCount}
-          {currentMilestone ? (
-            <>
-              {" "}
-              —{" "}
-              <span className="capitalize">{currentMilestone.status.toLowerCase().replace("_", " ")}</span>
-            </>
-          ) : null}
+        <div className="flex items-center justify-between gap-3 text-sm text-base-content/60">
+          <span>Milestones</span>
+          <span className="font-medium tabular-nums text-base-content">
+            {completedCount} / {totalCount}
+          </span>
         </div>
         <progress
           className="progress progress-primary w-full h-1.5"

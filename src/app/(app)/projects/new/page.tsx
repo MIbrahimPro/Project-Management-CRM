@@ -656,7 +656,7 @@ function NewProjectForm() {
               <p className="text-lg font-semibold text-base-content">AI Architect Analyzing...</p>
               <p className="text-sm text-base-content/60 mt-2 max-w-xs text-center">
                 {requestPdfUrl 
-                  ? "Reading PDF brief, generating comprehensive milestones with scope boundaries, and creating clarifying questions" 
+                  ? "Reading project brief, generating comprehensive milestones with scope boundaries, and creating clarifying questions" 
                   : "Generating detailed milestones with anti-scope-creep defenses and clarifying questions"}
               </p>
               <p className="text-xs text-base-content/40 mt-2">Powered by reasoning AI • This may take 10-30 seconds</p>

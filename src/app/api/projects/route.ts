@@ -203,16 +203,29 @@ export const POST = apiHandler(async (req: NextRequest) => {
           where: { id: requestId },
           data: { status: "ACCEPTED", projectId: p.id },
         });
-        // Add the client's initial PDF to assets
+        // Add the client's initial brief file to assets
         if (request.pdfUrl) {
-          const signedPdfUrl = await getSignedUrl(request.pdfUrl, 24 * 3600);
+          const signedUrl = await getSignedUrl(request.pdfUrl, 24 * 3600);
+          const lower = request.pdfUrl.toLowerCase();
+          let fileType = "application/pdf";
+          if (lower.endsWith(".docx")) fileType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+          else if (lower.endsWith(".md")) fileType = "text/markdown";
+          else if (lower.endsWith(".txt")) fileType = "text/plain";
+
+          let fileSize = 0;
+          try {
+            const head = await fetch(signedUrl, { method: "HEAD" });
+            const cl = head.headers.get("content-length");
+            if (cl) fileSize = parseInt(cl, 10) || 0;
+          } catch { /* keep 0 */ }
+
           await tx.asset.create({
             data: {
               projectId: p.id,
               name: request.title + " (Initial Request)",
-              fileUrl: signedPdfUrl,
-              fileType: "application/pdf",
-              fileSize: 0,
+              fileUrl: signedUrl,
+              fileType,
+              fileSize,
               uploadedById: request.clientId,
               isVisibleToClient: true,
             },
@@ -264,9 +277,24 @@ export const POST = apiHandler(async (req: NextRequest) => {
     );
   }
 
-  // Emit real-time update
+  // Emit real-time update with full project data
   if (global.io) {
-    global.io.of("/projects").emit("project_created", { project });
+    const fullProject = await prisma.project.findUnique({
+      where: { id: project.id },
+      include: {
+        milestones: true,
+        members: { include: { user: { select: { id: true, name: true, profilePicUrl: true } } } },
+        client: { select: { id: true, name: true } },
+      },
+    });
+    if (fullProject) {
+      const projectsNS = global.io.of("/projects");
+      projectsNS.to("manager_projects").emit("project_created", { project: fullProject });
+      projectsNS.to(`project:${project.id}`).emit("project_created", { project: fullProject });
+      for (const uid of [...teamMemberIds, ...normalizedClientIds]) {
+        projectsNS.to(`user:${uid}`).emit("project_created", { project: fullProject });
+      }
+    }
   }
 
   return NextResponse.json({ data: project }, { status: 201 });

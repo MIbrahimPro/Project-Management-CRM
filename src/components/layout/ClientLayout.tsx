@@ -9,6 +9,7 @@ import { AttendanceOvertimeModal } from "@/components/attendance/AttendanceOvert
 import { useSocket } from "@/hooks/useSocket";
 import { FetchInterceptor } from "@/components/auth/FetchInterceptor";
 import { PresenceProvider } from "./PresenceProvider";
+import { SHOW_AI_FEATURES, SHOW_ATTENDANCE } from "@/config/features";
 import toast from "react-hot-toast";
 import type { SidebarItem } from "@/config/sidebar";
 
@@ -52,15 +53,21 @@ function playNotificationSound() {
     const ctx = new AudioContext();
     const gain = ctx.createGain();
     gain.connect(ctx.destination);
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
-    const osc = ctx.createOscillator();
-    osc.connect(gain);
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(880, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.3);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.6);
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.52);
+
+    const playTone = (frequency: number, start: number, stop: number) => {
+      const osc = ctx.createOscillator();
+      osc.connect(gain);
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(frequency, start);
+      osc.start(start);
+      osc.stop(stop);
+    };
+
+    playTone(784, ctx.currentTime, ctx.currentTime + 0.16);
+    playTone(1046.5, ctx.currentTime + 0.18, ctx.currentTime + 0.42);
   } catch {}
 }
 
@@ -103,9 +110,13 @@ export function ClientLayout({ user, sidebarItems, children }: ClientLayoutProps
         }
       );
     });
+    notifSocket.on("new_message", () => {
+      void refreshChatBadge();
+    });
     return () => {
       notifSocket.off("shift_complete");
       notifSocket.off("new_notification");
+      notifSocket.off("new_message");
     };
   }, [notifSocket, router]);
 
@@ -116,6 +127,8 @@ export function ClientLayout({ user, sidebarItems, children }: ClientLayoutProps
     const saved = localStorage.getItem("sidebar-collapsed");
     if (saved === "true") setCollapsed(true);
 
+    void refreshChatBadge();
+
     // Register the Web Push service worker once (Phase 6.3).
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker
@@ -124,7 +137,7 @@ export function ClientLayout({ user, sidebarItems, children }: ClientLayoutProps
     }
 
     // Auto check-in on first visit of the day for attendance-eligible roles
-    if (ATTENDANCE_ROLES.includes(user.role)) {
+    if (SHOW_ATTENDANCE && ATTENDANCE_ROLES.includes(user.role)) {
       const today = new Date().toISOString().slice(0, 10);
       const key = `lastAutoCheckIn:${user.id}`;
       if (localStorage.getItem(key) !== today) {
@@ -141,6 +154,20 @@ export function ClientLayout({ user, sidebarItems, children }: ClientLayoutProps
     const next = !collapsed;
     setCollapsed(next);
     localStorage.setItem("sidebar-collapsed", String(next));
+  }
+
+  async function refreshChatBadge() {
+    try {
+      const res = await fetch("/api/chat/unseen");
+      if (!res.ok) return;
+      const json = (await res.json()) as { data?: { count: number } };
+      const count = json.data?.count ?? 0;
+      window.dispatchEvent(
+        new CustomEvent("sidebar-badge", { detail: { key: "chatUnseen", count } }),
+      );
+    } catch {
+      /* noop */
+    }
   }
 
   function openMobile() {
@@ -204,13 +231,15 @@ export function ClientLayout({ user, sidebarItems, children }: ClientLayoutProps
       </div>
 
       {/* AI Assistant floating sidebar */}
-      <AISidebar userRole={user.role} />
+      {SHOW_AI_FEATURES && <AISidebar userRole={user.role} />}
       {/* Overtime Popup */}
-      <AttendanceOvertimeModal 
-        isOpen={!!overtimeCheckInId} 
-        onClose={() => setOvertimeCheckInId(null)} 
-        checkInId={overtimeCheckInId || ""} 
-      />
+      {SHOW_ATTENDANCE && (
+        <AttendanceOvertimeModal
+          isOpen={!!overtimeCheckInId}
+          onClose={() => setOvertimeCheckInId(null)}
+          checkInId={overtimeCheckInId || ""}
+        />
+      )}
     </div>
     </SidebarOverrideContext.Provider>
     </UserContext.Provider>

@@ -89,9 +89,7 @@ export const GET = apiHandler(async (req: NextRequest) => {
           roomId: room.id,
           senderId: { not: userId },
           deletedAt: null,
-          ...(membership?.lastReadAt
-            ? { createdAt: { gt: membership.lastReadAt } }
-            : {}),
+          createdAt: { gt: membership?.lastReadAt ?? membership?.joinedAt ?? new Date(0) },
         },
       });
       return { ...room, unreadCount };

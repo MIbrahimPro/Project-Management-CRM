@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ChevronLeft, Search, Video, X, Plus } from "lucide-react";
+import { ChevronLeft, Search, X, Plus } from "lucide-react";
 import { ChatRoom } from "@/components/chat/ChatRoom";
 import { ResizablePanel } from "@/components/ui/ResizablePanel";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import { AvatarStack } from "@/components/projects/AvatarStack";
 import { useSocket } from "@/hooks/useSocket";
+import { SHOW_MEETINGS } from "@/config/features";
 import toast from "react-hot-toast";
 
 import { usePresence } from "@/components/layout/PresenceProvider";
@@ -292,7 +293,7 @@ export default function GeneralChatPage() {
   // Find the active entry for display
   const activeEntry = uniqueEntries.find((e) => e.kind === "room" && e.room?.id === activeRoomId);
   const isManager = user ? MANAGER_ROLES.includes(user.role) : false;
-  const canStartMeeting = user ? user.role !== "CLIENT" : false;
+  const canStartMeeting = SHOW_MEETINGS && user ? user.role !== "CLIENT" : false;
 
   if (loading) {
     return (

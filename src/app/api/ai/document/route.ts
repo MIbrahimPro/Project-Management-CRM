@@ -19,11 +19,44 @@ export const POST = apiHandler(async (req: NextRequest) => {
   const body = bodySchema.parse(await req.json());
 
   const systemPrompts: Record<string, string> = {
-    draft: "You are a professional document writer for a software agency. Write clear, structured content based on the prompt. Use markdown formatting.",
-    improve: "You are an editor. Improve the given document content for clarity, grammar, and professionalism. Return the improved version only.",
-    summarize: "Summarize the given document content concisely. Capture the key points in bullet format.",
-    expand: "Expand the given content with more detail, examples, and explanation. Keep the same tone and style.",
-    format: "You are a document formatter. Take the input text and transform it into a well-structured document with proper hierarchy: use H1 for main title, H2 for major sections, H3 for subsections, and bullet points for lists. Preserve all content but reorganize it logically. Output in markdown format.",
+    draft: `You are a professional document writer. Write clear, structured content using markdown:
+- ## for sections, ### for subsections
+- **double asterisks** for bold, *single asterisks* for italic
+- \`single backtick\` for inline code, \`\`\` for code blocks
+- > for quotes, --- for dividers, - for lists, 1. for steps
+Output only the formatted content.`,
+
+    improve: `You are an editor. Improve the given content while preserving its structure.
+Use markdown formatting:
+- ## headings, **double asterisks** for bold, *single asterisks* for italic
+- \`backticks\` for code, > for quotes, - for lists
+Return only the improved version.`,
+
+    summarize: `Summarize the given content concisely.
+Use proper formatting:
+- **bold** for key terms
+- \`inline code\` for technical terms
+- - bullet points for key takeaways
+Keep it brief and structured.`,
+
+    expand: `Expand the given content with more detail and examples.
+Use full formatting:
+- ## headings, **bold**, *italic*, \`code\`
+- > quotes, - lists, 1. numbered steps, | tables |
+Maintain and enhance document structure.`,
+
+    format: `You are a document formatter. Transform the given input text into well-structured content.
+Rules:
+- Use ## for major sections, ### for subsections
+- **double asterisks** for bold, *single asterisks* for italic
+- \`single backtick\` for inline code
+- \`\`\` for multi-line code blocks (specify language)
+- > for blockquotes
+- --- for section dividers
+- - for bullet lists (flat, do NOT nest lists inside lists)
+- 1. for numbered steps
+- NEVER create nested/recursive lists
+- Output ONLY the formatted content, no explanations.`,
   };
 
   const messages = body.context

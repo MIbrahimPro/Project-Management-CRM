@@ -4,6 +4,11 @@ import { prisma } from "@/lib/db/prisma";
 import { apiHandler, forbidden } from "@/lib/api/api-handler";
 import { logAction } from "@/lib/db/audit";
 import { sendNotification } from "@/lib/notifications/notify";
+import type { Server } from "socket.io";
+
+declare global {
+  var io: Server;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +61,10 @@ export const GET = apiHandler(async (req: NextRequest) => {
       createdAt: true,
       project: { select: { id: true, title: true } },
       assignees: {
-        select: { user: { select: { id: true, name: true, profilePicUrl: true } } },
+        select: {
+          userId: true,
+          user: { select: { id: true, name: true, profilePicUrl: true } },
+        },
       },
     },
   });
@@ -106,6 +114,24 @@ export const POST = apiHandler(async (req: NextRequest) => {
     return t;
   });
 
+  const fullTask = await prisma.task.findUnique({
+    where: { id: task.id },
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      completedAt: true,
+      projectId: true,
+      workspaceId: true,
+      createdAt: true,
+      project: { select: { id: true, title: true } },
+      assignees: {
+        select: { user: { select: { id: true, name: true, profilePicUrl: true } } },
+      },
+    },
+  });
+  const taskPayload = fullTask ?? task;
+
   // Notify assignees
   for (const a of task.assignees) {
     if (a.user.id !== userId) {
@@ -119,6 +145,19 @@ export const POST = apiHandler(async (req: NextRequest) => {
     }
   }
 
+  if (global.io) {
+    const projectsNS = global.io.of("/projects");
+    if (body.projectId) {
+      projectsNS.to(`project:${body.projectId}`).emit("task_created", { task: taskPayload });
+    } else {
+      projectsNS.to("manager_projects").emit("task_created", { task: taskPayload });
+      projectsNS.to(`user:${userId}`).emit("task_created", { task: taskPayload });
+      for (const assigneeId of body.assigneeIds ?? []) {
+        projectsNS.to(`user:${assigneeId}`).emit("task_created", { task: taskPayload });
+      }
+    }
+  }
+
   await logAction(userId, "TASK_CREATED", "Task", task.id, { title: body.title });
-  return NextResponse.json({ data: task }, { status: 201 });
+  return NextResponse.json({ data: taskPayload }, { status: 201 });
 });

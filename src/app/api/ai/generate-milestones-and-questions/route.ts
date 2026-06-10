@@ -3,9 +3,11 @@ import { z } from "zod";
 import { apiHandler, forbidden } from "@/lib/api/api-handler";
 import { callAIJson } from "@/lib/ai/ai";
 import { getSignedUrl } from "@/lib/storage/supabase-storage";
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+
 const pdfParseModule = require("pdf-parse");
 const pdfParse = pdfParseModule.default || pdfParseModule;
+
+const mammoth = require("mammoth");
 
 export const dynamic = "force-dynamic";
 
@@ -38,26 +40,48 @@ export const POST = apiHandler(async (req: NextRequest) => {
     ? `\n\nExisting Draft Milestones (improve and expand these):\n${existingMilestones.map((m, i) => `[${i + 1}] ${m.title}${m.content ? `\n${m.content}` : ""}`).join("\n\n")}`
     : "";
 
-  // Fetch and parse PDF content if provided
-  let pdfContent = "";
+  // Fetch and parse file content if provided
+  let fileContent = "";
+  let fileLabel = "PDF";
   if (pdfUrl) {
     try {
-      const signedUrl = await getSignedUrl(pdfUrl, 600); // 10 min expiry
+      const signedUrl = await getSignedUrl(pdfUrl, 600);
       const response = await fetch(signedUrl);
       if (response.ok) {
         const buffer = Buffer.from(await response.arrayBuffer());
-        const parsed = await pdfParse(buffer);
-        pdfContent = parsed.text.substring(0, 10000); // Limit to 10k chars
+        const lower = pdfUrl.toLowerCase();
+        if (lower.endsWith(".pdf")) {
+          const parsed = await pdfParse(buffer);
+          fileContent = parsed.text.substring(0, 10000);
+          fileLabel = "PDF";
+        } else if (lower.endsWith(".docx")) {
+          const result = await mammoth.extractRawText({ buffer });
+          fileContent = result.value.substring(0, 10000);
+          fileLabel = "DOCX";
+        } else if (lower.endsWith(".md") || lower.endsWith(".txt")) {
+          fileContent = buffer.toString("utf-8").substring(0, 10000);
+          fileLabel = lower.endsWith(".md") ? "MD" : "TXT";
+        } else {
+          // Fallback: try pdf-parse first, then try as text
+          try {
+            const parsed = await pdfParse(buffer);
+            fileContent = parsed.text.substring(0, 10000);
+            fileLabel = "PDF";
+          } catch {
+            fileContent = buffer.toString("utf-8").substring(0, 10000);
+            fileLabel = "Text";
+          }
+        }
       }
     } catch (e) {
-      console.log("Failed to parse PDF, continuing without PDF content");
+      console.log("Failed to parse file, continuing without file content");
     }
   }
 
-  const pdfContext = pdfContent
-    ? `\n\n[CLIENT SUBMITTED PDF BRIEF - EXTRACTED CONTENT]:\n${pdfContent}\n\nAnalyze this PDF thoroughly for requirements, constraints, deliverables, and implicit scope boundaries.`
+  const fileContext = fileContent
+    ? `\n\n[CLIENT SUBMITTED ${fileLabel} BRIEF - EXTRACTED CONTENT]:\n${fileContent}\n\nAnalyze this ${fileLabel} thoroughly for requirements, constraints, deliverables, and implicit scope boundaries.`
     : pdfUrl
-      ? `\n\n[CLIENT SUBMITTED PDF: A PDF brief was submitted but could not be parsed. Please proceed based on the project description.]`
+      ? `\n\n[CLIENT SUBMITTED FILE: A ${fileLabel} brief was submitted but could not be parsed. Please proceed based on the project description.]`
       : "";
 
   const systemPrompt = `You are an ELITE SENIOR DELIVERY ARCHITECT with 20+ years of software project management experience.
@@ -82,7 +106,7 @@ DON'T ask about: general goals, timeline preferences, or things already stated.`
   const userPrompt = `Create a milestone plan for this project. Write naturally and practically.
 
 PROJECT: ${title}
-DESCRIPTION: ${description}${pdfContext}${existingText}
+DESCRIPTION: ${description}${fileContext}${existingText}
 
 MILESTONE GUIDANCE:
 Each milestone should tell a story:
@@ -97,16 +121,18 @@ Each milestone should tell a story:
 - It should be professional documentation - anyone reading it should know exactly what will be built and how
 
 FORMATTING INSTRUCTIONS:
-The milestone "content" will be rendered as rich text in a document editor. Use proper markdown formatting:
-- Use ## for main sections (e.g., ## Overview, ## Deliverables)
-- Use ### for subsections if needed
-- Use bullet lists (- item) for listing features, tasks, requirements
-- Use numbered lists (1. item) for sequential steps or priorities
-- Use **bold** for emphasis on key terms or important notes
-- Use backtick code blocks for technical terms, file names, API endpoints
-- Use proper line breaks between sections for readability
+The milestone "content" will be rendered as rich text in a document editor. Use proper markdown:
+- ## for main sections, ### for subsections, #### for sub-subsections
+- **bold** for key terms, *italic* for emphasis
+- \`inline code\` for technical terms, file names, API endpoints, CLI commands
+- \`\`\`language blocks for multi-line code snippets
+- > blockquotes for important notes, warnings, or callouts
+- --- horizontal dividers between major sections
+- - bullet lists for features, tasks, requirements
+- 1. numbered lists for sequential steps or priorities
+- | Tables | for | structured | data | when helpful
 
-The system will parse this markdown and convert it to styled blocks (headings, lists, paragraphs). Make sure your formatting is clean and consistent.
+Use line breaks between sections for readability. The content will be parsed into styled blocks.
 
 QUESTIONS - ONLY IF NEEDED:
 For each milestone, consider: "Is there a critical missing piece that would block execution?"
